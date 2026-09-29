@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../../core/theme/app_fonts.dart';
 import '../../../core/theme/cyber_colors.dart';
-import '../../../widgets/scale_fit.dart';
 
-/// Portfolio header: title + Holdings / Positions tabs with an active
-/// bottom underline, mirroring the reference light-trading layout.
+/// Portfolio header: Holdings / Positions tabs with an active bottom
+/// underline, mirroring the reference light-trading layout.
 class PortfolioHeader extends StatelessWidget {
   final int openCount;
   final int holdingsCount;
@@ -26,52 +23,27 @@ class PortfolioHeader extends StatelessWidget {
     return Container(
       color: TradePalette.slate100,
       padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Row(
         children: [
-          Row(
-            children: [
-              const Icon(
-                LucideIcons.chevronLeft,
-                size: 22,
-                color: TradePalette.slate900,
-              ),
-              const SizedBox(width: 8),
-              Flexible(
-                child: ScaleFit(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Portfolio',
-                    style: AppText.title.copyWith(color: TradePalette.slate900),
-                  ),
-                ),
-              ),
-            ],
+          Expanded(
+            child: _Tab(
+              label: 'Holdings',
+              count: holdingsCount,
+              selected: selectedTab == 0,
+              showCount: false,
+              contentAlign: MainAxisAlignment.end,
+              onTap: () => onTabSelected(0),
+            ),
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _Tab(
-                  label: 'Holdings',
-                  count: holdingsCount,
-                  selected: selectedTab == 0,
-                  showCount: false,
-                  contentAlign: MainAxisAlignment.end,
-                  onTap: () => onTabSelected(0),
-                ),
-              ),
-              const SizedBox(width: 24),
-              Expanded(
-                child: _Tab(
-                  label: 'Positions',
-                  count: openCount,
-                  selected: selectedTab == 1,
-                  contentAlign: MainAxisAlignment.start,
-                  onTap: () => onTabSelected(1),
-                ),
-              ),
-            ],
+          const SizedBox(width: 24),
+          Expanded(
+            child: _Tab(
+              label: 'Positions',
+              count: openCount,
+              selected: selectedTab == 1,
+              contentAlign: MainAxisAlignment.start,
+              onTap: () => onTabSelected(1),
+            ),
           ),
         ],
       ),

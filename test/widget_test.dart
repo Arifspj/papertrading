@@ -6,7 +6,7 @@ void main() {
     await tester.pumpWidget(const CyberPulseApp());
     await tester.pumpAndSettle();
 
-    expect(find.text('Portfolio'), findsOneWidget);
+    expect(find.text('Portfolio'), findsNothing);
     expect(find.text('Total P&L'), findsOneWidget);
     expect(find.text('NIFTY OCT 22350 PE'), findsNWidgets(2));
     expect(find.text('NRML'), findsWidgets);
