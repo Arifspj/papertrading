@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/cyber_colors.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../models/market/live_quote.dart';
 import '../../../models/position.dart';
 import '../../../widgets/instrument_title.dart';
 import '../../../widgets/scale_fit.dart';
@@ -11,14 +12,35 @@ import '../../../widgets/scale_fit.dart';
 /// symbol/segment (left) and P&L/LTP (right).
 class PositionCard extends StatelessWidget {
   final Position position;
+
+  /// Live quote for this contract, when the feed has one. Falls back to the
+  /// position's stored price so the row is never blank.
+  final LiveQuote? live;
+
   final VoidCallback onTap;
 
-  const PositionCard({super.key, required this.position, required this.onTap});
+  const PositionCard({
+    super.key,
+    required this.position,
+    required this.onTap,
+    this.live,
+  });
 
   @override
   Widget build(BuildContext context) {
     final p = position;
     final closed = p.isClosed;
+
+    // A live price only counts once it is a real number; the chain can hand
+    // back a zero for a strike that has no premium.
+    final ltp = (live != null && live!.ltp > 0)
+        ? live!.ltp
+        : p.lastTradedPrice;
+
+    // Unrealised P&L on the live mark, falling back to the booked figure.
+    final pnl = live != null && ltp > 0
+        ? (ltp - p.averagePrice) * p.quantity
+        : p.pnl;
 
     final qtyColor = closed
         ? TradePalette.slate600
@@ -26,7 +48,7 @@ class PositionCard extends StatelessWidget {
         ? TradePalette.qtyLong
         : TradePalette.qtyShort;
 
-    final pnlColor = p.pnl < 0
+    final pnlColor = pnl < 0
         ? TradePalette.negativeRed
         : TradePalette.positiveGreen;
 
@@ -84,7 +106,7 @@ class PositionCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
-                            formatSigned(p.pnl),
+                            formatSigned(pnl),
                             style: _pnlStyle.copyWith(
                               color: pnlColor.withValues(
                                 alpha: closed ? 0.8 : 1,
@@ -98,7 +120,7 @@ class PositionCard extends StatelessWidget {
                               const Text('LTP', style: _ltpLabelStyle),
                               const SizedBox(width: 4),
                               Text(
-                                formatPlain(p.lastTradedPrice),
+                                formatPlain(ltp),
                                 style: _ltpValueStyle,
                               ),
                             ],

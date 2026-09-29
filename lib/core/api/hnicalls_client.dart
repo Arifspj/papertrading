@@ -114,16 +114,20 @@ class HnicallsClient {
 
   /// `GET /api/ltp/{instrument}/{strike}/{CE|PE}` (weekly)
   /// `GET /api/ltp/{instrument}/monthly/{strike}/{CE|PE}` (monthly)
+  ///
+  /// Used as a fallback when the whole option chain is unavailable. The
+  /// upstream route is case-insensitive, but lower-case matches the documented
+  /// form and the `/option-chain/*` sibling route.
   Future<double?> fetchOptionLtp(
     String instrument,
     int strike,
     String optionType, {
     HnExpiryType expiry = HnExpiryType.weekly,
   }) async {
-    final segment = optionType.toUpperCase();
+    final segment = optionType.toLowerCase();
     final path = expiry == HnExpiryType.monthly
-        ? 'ltp/$instrument/monthly/$strike/$segment'
-        : 'ltp/$instrument/$strike/$segment';
+        ? 'ltp/${instrument.toLowerCase()}/monthly/$strike/$segment'
+        : 'ltp/${instrument.toLowerCase()}/$strike/$segment';
     final json = await _getJson(
       _uri(HnicallsApiConfig.marketBase, path),
       timeout: const Duration(seconds: 8),

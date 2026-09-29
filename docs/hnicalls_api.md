@@ -33,13 +33,21 @@ Both are overridable: `HNICALLS_API_BASE`, `HNICALLS_PUBLIC_BASE`, `HNICALLS_WS_
 | `GET /analysis/{instrument}` | 200 ✅ | ATM snapshot, PCR, max pain, IV skew |
 | `GET /observation/` | 200 ✅ | Free-text feed, list of `{observation}` |
 | `GET /public/api/ticker_app` | 200 ✅ | Index quotes + movers |
-| `GET /option-chain/{instrument}` | 500 ⚠️ | Route exists, upstream erroring |
-| `GET /ltp/{instrument}/{strike}/{type}` | 500 ⚠️ | Route exists, upstream erroring |
+| `GET /option-chain/{instrument}` | 200 ✅ (market hours) | Every strike's CE/PE LTP in one call |
+| `GET /ltp/{instrument}/{strike}/{type}` | 200 ✅ (market hours) | Single contract LTP, used as fallback |
 | `wss://api.hnicalls.com/ws/v1` | 404 ❌ | No WS server deployed |
 
-The 500s are upstream, not client-side: the same URLs are constructed and sent
-correctly and return a proper JSON error body. The app treats them as
-"unavailable" and reports `degraded` rather than crashing.
+The option routes work **while the market is open** and fail after hours with
+`500 {"error": "local variable 'expiry' referenced before assignment"}` — an
+upstream bug in how HNICALLS resolves the expiry, not a client mistake. When
+that happens the app keeps the last price it had and the row falls back to its
+stored value; nothing crashes and the feed reports `degraded`.
+
+Option LTP reaches the UI like this: the watchlist and positions screens call
+`LiveMarketController.trackSymbols()` with the rows they are showing. One
+`/option-chain/{underlying}` call then resolves every tracked strike of that
+underlying, and anything the chain misses falls back to `/ltp/...`. Indices on
+those screens come from `ticker_app` and need no tracking.
 
 ## Gotchas
 
@@ -110,11 +118,14 @@ list or wrapped in a map; both parse. Rows are sorted by strike on parse.
       "CALL_GAMMA": 0.0,  "PUT_GAMMA": 0.0,
       "CALL_THETA": -6.0, "PUT_THETA": 6.0,
       "CALL_VEGA": 1.0,   "PUT_VEGA": 1.0,
-      "CALL_VOLUME": 0,   "PUT_VOLUME": 0
+      "CALL_VOL": 0,      "PUT_VOL": 0
     }
   ]
 }
 ```
+
+Volume comes back as `CALL_VOL` / `PUT_VOL` (not `CALL_VOLUME`), which is what
+`OptionChainRow` reads.
 
 Derived in `OptionChain`: `atmRow` (nearest strike to spot), `maxPainRow`
 (smallest `|callOi − putOi|`), `pcr` (`ΣputOi / ΣcallOi`), `ivSkew` (ATM put IV

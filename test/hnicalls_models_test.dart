@@ -133,6 +133,25 @@ void main() {
       };
     }
 
+    test('reads the call and put volume keys upstream actually sends', () {
+      final c = OptionChain.fromJson({
+        'status': 'success',
+        'spot_price': 22716.2,
+        'data': [
+          {
+            'STRIKE': 22700,
+            'CALL_LTP': 16.25,
+            'PUT_LTP': 340.74,
+            'CALL_VOL': 1234.5,
+            'PUT_VOL': 6789.0,
+          },
+        ],
+      });
+      final row = c.rows.single;
+      expect(row.callVolume, 1234.5);
+      expect(row.putVolume, 6789.0);
+    });
+
     test('parses the list form and sorts by strike', () {
       final c = OptionChain.fromJson(chain());
       expect(c.isSuccess, isTrue);

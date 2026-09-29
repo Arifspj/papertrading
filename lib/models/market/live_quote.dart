@@ -2,6 +2,10 @@
 /// only source the header marquee is allowed to render.
 const kTickerQuoteSource = 'poll:ticker';
 
+/// Identifies per-contract option premiums resolved from the option chain for
+/// the rows the watchlist and positions book are currently showing.
+const kContractLtpSource = 'poll:contract';
+
 /// One normalised quote pushed by the live stream.
 class LiveQuote {
   /// Canonical app symbol, e.g. `NIFTY 22700 CE` or `NIFTY`.

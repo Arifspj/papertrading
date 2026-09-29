@@ -27,6 +27,11 @@ class WatchlistScreen extends StatefulWidget {
 
 class _WatchlistScreenState extends State<WatchlistScreen> {
   late final WatchlistRepository _repo;
+
+  /// Cached because [dispose] runs after the element is deactivated, where
+  /// looking an ancestor up through `context` is no longer safe.
+  late final LiveMarketController _live;
+
   List<WatchItem> _items = const [];
   bool _loading = true;
   int _tab = 0;
@@ -40,11 +45,23 @@ class _WatchlistScreenState extends State<WatchlistScreen> {
     'BANKNIFTY',
   ];
 
+  /// API symbols the live feed is currently polling for this screen.
+  Set<String> _trackedApiSymbols = {};
+
   @override
   void initState() {
     super.initState();
     _repo = context.read<WatchlistRepository>();
+    _live = context.read<LiveMarketController>();
     _load();
+  }
+
+  @override
+  void dispose() {
+    if (_trackedApiSymbols.isNotEmpty) {
+      _live.untrackSymbols(_trackedApiSymbols);
+    }
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -55,6 +72,18 @@ class _WatchlistScreenState extends State<WatchlistScreen> {
       _items = items;
       _loading = false;
     });
+    _syncTracked();
+  }
+
+  /// Keep the live feed pointed at exactly the rows on screen, so a deleted
+  /// symbol stops being polled and a fresh one starts immediately.
+  void _syncTracked() {
+    if (!mounted) return;
+    final wanted =
+        _items.map((i) => SymbolParts.parse(i.symbol).apiSymbol).toSet();
+    _live.untrackSymbols(_trackedApiSymbols.difference(wanted));
+    _live.trackSymbols(wanted);
+    _trackedApiSymbols = wanted;
   }
 
   Future<void> _openSearch() async {

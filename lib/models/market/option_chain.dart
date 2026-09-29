@@ -61,8 +61,10 @@ class OptionChainRow {
         putTheta: asDoubleOr(j['PUT_THETA'], 0),
         callVega: asDoubleOr(j['CALL_VEGA'], 0),
         putVega: asDoubleOr(j['PUT_VEGA'], 0),
-        callVolume: asDoubleOr(j['CALL_VOLUME'], 0),
-        putVolume: asDoubleOr(j['PUT_VOLUME'], 0),
+        // Upstream sends `CALL_VOL` / `PUT_VOL`; the longer spelling is kept as
+        // a fallback in case a proxy or an older build renames them.
+        callVolume: asDoubleOr(j['CALL_VOL'] ?? j['CALL_VOLUME'], 0),
+        putVolume: asDoubleOr(j['PUT_VOL'] ?? j['PUT_VOLUME'], 0),
       );
 }
 

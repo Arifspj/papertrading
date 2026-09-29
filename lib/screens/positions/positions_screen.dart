@@ -7,6 +7,8 @@ import '../../core/theme/cyber_colors.dart';
 import '../../models/position.dart';
 import '../../repositories/positions_repository.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/symbol_formatter.dart';
+import '../../services/live/live_market_controller.dart';
 import '../../widgets/scale_fit.dart';
 import 'widgets/position_card.dart';
 import 'widgets/order_pad_sheet.dart';
@@ -24,6 +26,11 @@ class PositionsScreen extends StatefulWidget {
 
 class _PositionsScreenState extends State<PositionsScreen> {
   late final PositionsRepository _repo;
+
+  /// Cached because [dispose] runs after the element is deactivated, where
+  /// looking an ancestor up through `context` is no longer safe.
+  late final LiveMarketController _live;
+
   final _searchCtrl = TextEditingController();
 
   bool _loading = true;
@@ -35,16 +42,23 @@ class _PositionsScreenState extends State<PositionsScreen> {
   PositionFilter _filter = PositionFilter.all;
   int _selectedTab = 1; // Positions tab is active by default
 
+  /// API symbols the live feed is currently polling for this book.
+  Set<String> _trackedApiSymbols = {};
+
   @override
   void initState() {
     super.initState();
     _repo = context.read<PositionsRepository>();
+    _live = context.read<LiveMarketController>();
     _load();
   }
 
   @override
   void dispose() {
     _searchCtrl.dispose();
+    if (_trackedApiSymbols.isNotEmpty) {
+      _live.untrackSymbols(_trackedApiSymbols);
+    }
     super.dispose();
   }
 
@@ -63,6 +77,7 @@ class _PositionsScreenState extends State<PositionsScreen> {
         _loading = false;
       });
       _applyVisible();
+      _syncTracked();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -70,6 +85,17 @@ class _PositionsScreenState extends State<PositionsScreen> {
         _loading = false;
       });
     }
+  }
+
+  /// Point the live feed at every open row in the book. [PositionCard] reads
+  /// the resulting quotes to replace its static LTP and P&L.
+  void _syncTracked() {
+    if (!mounted) return;
+    final wanted =
+        _all.map((p) => SymbolParts.parse(p.symbol).apiSymbol).toSet();
+    _live.untrackSymbols(_trackedApiSymbols.difference(wanted));
+    _live.trackSymbols(wanted);
+    _trackedApiSymbols = wanted;
   }
 
   void _applyVisible() {
@@ -213,14 +239,23 @@ class _PositionsScreenState extends State<PositionsScreen> {
       return const [_EmptyState()];
     }
     return [
-      for (var i = 0; i < _visible.length; i++) ...[
-        PositionCard(
-          position: _visible[i],
-          onTap: () => _openPosition(_visible[i]),
+      Consumer<LiveMarketController>(
+        builder: (context, live, _) => Column(
+          children: [
+            for (var i = 0; i < _visible.length; i++) ...[
+              PositionCard(
+                position: _visible[i],
+                live: live.quoteFor(
+                  SymbolParts.parse(_visible[i].symbol).apiSymbol,
+                ),
+                onTap: () => _openPosition(_visible[i]),
+              ),
+              if (i < _visible.length - 1)
+                const Divider(color: TradePalette.slate100, height: 1),
+            ],
+          ],
         ),
-        if (i < _visible.length - 1)
-          const Divider(color: TradePalette.slate100, height: 1),
-      ],
+      ),
     ];
   }
 }

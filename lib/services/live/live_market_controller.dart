@@ -153,6 +153,23 @@ class LiveMarketController extends ChangeNotifier {
     }
   }
 
+  /// Ask for live premiums for the contracts the UI is showing.
+  ///
+  /// Safe to call on every rebuild with the full list; only genuinely new
+  /// symbols cost anything, and the first change pulls a cycle straight away so
+  /// a freshly added row does not sit on its mock price for 15 seconds.
+  void trackSymbols(Iterable<String> symbols) {
+    final poll = _poll;
+    if (poll is! HnicallsPollingStream) return;
+    if (poll.trackSymbols(symbols)) unawaited(refresh());
+  }
+
+  void untrackSymbols(Iterable<String> symbols) {
+    final poll = _poll;
+    if (poll is! HnicallsPollingStream) return;
+    if (poll.untrackSymbols(symbols)) unawaited(refresh());
+  }
+
   Future<void> _teardown() async {
     _fallbackTimer?.cancel();
     _fallbackTimer = null;

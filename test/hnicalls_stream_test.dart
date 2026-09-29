@@ -123,7 +123,9 @@ void main() {
         'CE',
         expiry: HnExpiryType.monthly,
       );
-      expect(seen.path, endsWith('/ltp/NIFTY/monthly/22700/CE'));
+      // Lower-case: that is the form the live route answers on, and it matches
+      // the sibling `/option-chain/{instrument}` route.
+      expect(seen.path, endsWith('/ltp/nifty/monthly/22700/ce'));
       expect(ltp, 340.74);
     });
 
@@ -290,6 +292,111 @@ void main() {
 
       expect(events.last.status, StreamStatus.degraded);
       expect(events.last.quotes, isEmpty);
+    });
+
+    /// Serves the ticker, a two-strike NIFTY chain, and single-contract LTPs.
+    HnicallsClient contractClient({
+      bool chainWorks = true,
+    }) {
+      return HnicallsClient(
+        client: MockClient((req) async {
+          final path = req.url.path;
+          if (path.endsWith('/ticker_app')) {
+            return http.Response(
+              '{"status":"success","updated":"2026-09-29T13:33:37.143Z",'
+              '"smallList":[{"symbol":"NIFTY","ltp":22716.2,"pct_change":-0.28,'
+              '"prev_close":22780.25}],"moversList":[]}',
+              200,
+            );
+          }
+          if (path.contains('/analysis/')) {
+            return http.Response(
+              '{"status":"success","instrument":"NIFTY","spotPrice":22716.2,'
+              '"strike":22700,"premium":340.74,"option_type":"NEUTRAL"}',
+              200,
+            );
+          }
+          if (path.contains('/option-chain/')) {
+            if (!chainWorks) return http.Response('upstream down', 500);
+            return http.Response(
+              '{"status":"success","instrument":"NIFTY","spot_price":22716.2,'
+              '"expiry":"2026-09-29","data":['
+              '{"STRIKE":22700,"CALL_LTP":16.25,"PUT_LTP":340.74,'
+              '"CALL_OI":100,"PUT_OI":200,"CALL_VOL":11,"PUT_VOL":22},'
+              '{"STRIKE":22350,"CALL_LTP":4.5,"PUT_LTP":900.0,'
+              '"CALL_OI":50,"PUT_OI":60,"CALL_VOL":1,"PUT_VOL":2}]}',
+              200,
+            );
+          }
+          if (path.contains('/ltp/')) {
+            return http.Response('{"status":"success","ltp":7.25}', 200);
+          }
+          return http.Response('{}', 500);
+        }),
+      );
+    }
+
+    test('resolves tracked strikes from the option chain', () async {
+      final stream = HnicallsPollingStream(
+        client: contractClient(),
+        instruments: const [],
+        interval: const Duration(hours: 1),
+      );
+      stream.trackSymbols(const ['NIFTY OCT 22350 PE', 'NIFTY 22700 CE']);
+      final events = <StreamEvent>[];
+      final sub = stream.events.listen(events.add);
+      await stream.start();
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      await sub.cancel();
+      await stream.stop();
+
+      final live = events.where((e) => e.quotes.isNotEmpty).toList();
+      final bySymbol = {
+        for (final q in live.last.quotes) q.symbol: q,
+      };
+      // The chain answered both, so no per-contract call was needed.
+      expect(bySymbol['NIFTY 22350 PE']?.ltp, 900.0);
+      expect(bySymbol['NIFTY 22700 CE']?.ltp, 16.25);
+      expect(bySymbol['NIFTY 22350 PE']?.source, kContractLtpSource);
+    });
+
+    test('falls back to the single-contract route when the chain is down',
+        () async {
+      final stream = HnicallsPollingStream(
+        client: contractClient(chainWorks: false),
+        instruments: const [],
+        interval: const Duration(hours: 1),
+      );
+      stream.trackSymbols(const ['NIFTY OCT 22350 PE']);
+      final events = <StreamEvent>[];
+      final sub = stream.events.listen(events.add);
+      await stream.start();
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      await sub.cancel();
+      await stream.stop();
+
+      final live = events.where((e) => e.quotes.isNotEmpty).toList();
+      final contract =
+          live.last.quotes.where((q) => q.source == kContractLtpSource).toList();
+      expect(contract, hasLength(1));
+      expect(contract.single.symbol, 'NIFTY 22350 PE');
+      expect(contract.single.ltp, 7.25);
+    });
+
+    test('ignores symbols with no upstream feed', () async {
+      final stream = HnicallsPollingStream(
+        client: contractClient(),
+        instruments: const [],
+        interval: const Duration(hours: 1),
+      );
+      // Cash, futures and an unknown index cannot be priced from a chain.
+      expect(stream.trackSymbols(const ['NIFTY', 'NIFTY NOV FUT', 'RELIANCE']),
+          isFalse);
+      expect(stream.trackSymbols(const ['NIFTY OCT 22350 PE']), isTrue);
+      expect(stream.trackSymbols(const ['NIFTY OCT 22350 PE']), isFalse,
+          reason: 're-tracking the same row must not cost another request');
+      expect(stream.untrackSymbols(const ['NIFTY OCT 22350 PE']), isTrue);
+      expect(stream.untrackSymbols(const ['NIFTY OCT 22350 PE']), isFalse);
     });
   });
 }
