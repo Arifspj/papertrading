@@ -6,8 +6,8 @@ import '../../core/theme/app_fonts.dart';
 import '../../core/theme/cyber_colors.dart';
 import '../../models/position.dart';
 import '../../repositories/positions_repository.dart';
+import '../../core/utils/formatters.dart';
 import '../../widgets/scale_fit.dart';
-import 'widgets/hero_pnl_card.dart';
 import 'widgets/position_card.dart';
 import 'widgets/position_detail_sheet.dart';
 import 'widgets/position_filter_sheet.dart';
@@ -123,7 +123,6 @@ class _PositionsScreenState extends State<PositionsScreen> {
         bottom: false,
         child: Column(
           children: [
-            const IosStatusBar(),
             PortfolioHeader(
               openCount: openCount,
               holdingsCount: openCount,
@@ -157,11 +156,12 @@ class _PositionsScreenState extends State<PositionsScreen> {
             child: Stack(
               alignment: Alignment.topCenter,
               children: [
-                Container(
-                  height: 120,
-                  width: double.infinity,
-                  color: TradePalette.slate100,
-                ),
+                if (_summary != null)
+                  Container(
+                    width: double.infinity,
+                    height: 140,
+                    color: TradePalette.slate100,
+                  ),
                 Padding(
                   padding: const EdgeInsets.only(top: 44),
                   child: _PortfolioPanel(
@@ -173,7 +173,14 @@ class _PositionsScreenState extends State<PositionsScreen> {
                     children: _buildPanelChildren(c),
                   ),
                 ),
-                if (_summary != null) HeroPnlCard(summary: _summary!),
+                if (_summary != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 7),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 23.5),
+                      child: _HeroCard(summary: _summary!),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -228,12 +235,18 @@ class _PortfolioPanel extends StatelessWidget {
           top: BorderSide(color: TradePalette.slate200.withValues(alpha: 0.7)),
         ),
       ),
-      padding: const EdgeInsets.fromLTRB(0, 56, 0, 96),
+      padding: const EdgeInsets.fromLTRB(0, 50, 0, 96),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+          Container(
+            width: double.infinity,
+            decoration: const BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: TradePalette.slate200),
+              ),
+            ),
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 14),
             child: _Toolbar(
               searching: searching,
               filtered: filtered,
@@ -248,6 +261,65 @@ class _PortfolioPanel extends StatelessWidget {
             ),
           const SizedBox(height: 8),
           ...children,
+        ],
+      ),
+    );
+  }
+}
+
+/// Full-width square white box behind the Total P&L block, inset 20px from
+/// each side on the slate-100 backdrop, flowing into the white panel below.
+class _HeroCard extends StatelessWidget {
+  final PortfolioSummary summary;
+
+  const _HeroCard({required this.summary});
+
+  @override
+  Widget build(BuildContext context) {
+    final value = formatSigned(summary.totalPnl);
+    final isProfit = summary.totalPnl >= 0;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(
+          color: TradePalette.slate200.withValues(alpha: 0.8),
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x140F172A),
+            blurRadius: 30,
+            spreadRadius: -4,
+            offset: Offset(0, 12),
+          ),
+          BoxShadow(
+            color: Color(0x0D0F172A),
+            blurRadius: 12,
+            spreadRadius: -2,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Text(
+            'Total P&L',
+            style: AppText.micro.copyWith(
+              color: TradePalette.slate500,
+              fontSize: 12,
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: AppText.heroPnl.copyWith(
+              color: isProfit
+                  ? TradePalette.positiveGreen
+                  : TradePalette.negativeRed,
+            ),
+          ),
         ],
       ),
     );
@@ -289,30 +361,12 @@ class _Toolbar extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  width: 18,
-                  height: 18,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: TradePalette.uLogo,
-                    borderRadius: BorderRadius.circular(5),
-                  ),
-                  child: const Text(
-                    'U',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 5),
                 Text(
-                  'U Analyze',
+                  'Analyze',
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: TradePalette.uLogo,
+                    color: TradePalette.primary,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -354,6 +408,7 @@ class _ToolAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(10);
     return Semantics(
       button: true,
       label: tooltip,
@@ -361,25 +416,14 @@ class _ToolAction extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          customBorder: const CircleBorder(),
+          customBorder: RoundedRectangleBorder(borderRadius: radius),
           child: Ink(
-            width: 34,
+            width: 46,
             height: 34,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: active ? TradePalette.greenLight : TradePalette.slate100,
-              border: Border.all(
-                color: active
-                    ? TradePalette.greenBorder
-                    : TradePalette.slate200,
-              ),
-            ),
             child: Icon(
               icon,
-              size: 15,
-              color: active
-                  ? TradePalette.positiveGreen
-                  : TradePalette.slate600,
+              size: 16,
+              color: TradePalette.primary,
             ),
           ),
         ),
@@ -409,7 +453,7 @@ class _SearchField extends StatelessWidget {
         prefixIcon: Icon(
           LucideIcons.search,
           size: 15,
-          color: TradePalette.slate400,
+          color: TradePalette.primary,
         ),
         filled: true,
         fillColor: TradePalette.slate100,

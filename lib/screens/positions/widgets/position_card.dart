@@ -138,12 +138,20 @@ class _SymbolTitle extends StatelessWidget {
         style: base,
         children: [
           TextSpan(text: m.group(1)),
-          TextSpan(
-            text: m.group(2),
-            style: const TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w400,
-              color: TradePalette.slate500,
+          WidgetSpan(
+            alignment: PlaceholderAlignment.baseline,
+            baseline: TextBaseline.alphabetic,
+            child: Transform.translate(
+              offset: const Offset(0, -3),
+              child: Text(
+                m.group(2)!,
+                style: const TextStyle(
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w600,
+                  color: TradePalette.slate500,
+                  height: 1.0,
+                ),
+              ),
             ),
           ),
           WidgetSpan(
