@@ -35,34 +35,54 @@ Both are overridable: `HNICALLS_API_BASE`, `HNICALLS_PUBLIC_BASE`, `HNICALLS_WS_
 | `GET /observation/` | 200 ✅ | Free-text feed, list of `{observation}` |
 | `GET /public/api/ticker_app` | 200 ✅ | Index quotes + movers |
 | `GET /option-chain/{instrument}` | Intermittent | Works at times, 500s in bursts |
-| `GET /ltp/{instrument}/{strike}/{type}` | 500 ❌ | **Unusable — hard upstream bug, see below** |
+| `GET /ltp/{instrument}/{strike}/{type}` | 200 ⚠️ | **Works, but PE prices and OI are wrong** |
 | `wss://api.hnicalls.com/ws/v1` | 404 ❌ | No WS server deployed |
 
-## The `/ltp` route is broken upstream, and no parameter fixes it
+## The `/ltp` route: use with care
 
-`GET /api/ltp/nifty/22700/ce` returns:
+`GET /api/ltp/nifty/22700/pe` used to fail with
+`{"error":"local variable 'expiry' referenced before assignment"}` — a Python
+`UnboundLocalError`. That is fixed upstream now; the bare route returns 200.
+
+**The `?expiry=` query parameter is a no-op.** Every value returns the same
+nearest-expiry row: `?expiry=01-OCT-2026`, `?expiry=2026-10-01`,
+`?expiry=anything` and even `?expiry=` all return `"expiry":"2026-09-29"`. There
+is no way to select an expiry; you get whatever the server resolves.
+
+The payload is richer than the chain:
 
 ```json
-{"error":"local variable 'expiry' referenced before assignment"}
+{"expiry":"2026-09-29","expiry_type":"weekly","instrument":"NIFTY",
+ "ltp":16.25,"oi":16266510.0,"option_type":"CE","status":"success","strike":22700}
 ```
 
-That string is a Python `UnboundLocalError` — the handler reads `expiry` in a
-code path that never assigns it. Every plausible workaround was probed and all
-of them return the byte-identical error, so the variable simply has no
-assignment to reach:
+Note the resolved `expiry` is **per-underlying**: NIFTY returned `2026-09-29`
+while SENSEX returned `2026-10-01` for the same call shape.
 
-| Attempted | Result |
-|---|---|
-| `/ltp/nifty/22700/ce` | 500, same error |
-| `/ltp/nifty/22700/ce?expiry=01OCT` | 500, same error |
-| `/ltp/nifty/22700/ce?expiry=01-OCT-2026` | 500, same error |
-| `/ltp/nifty/22700/ce?type=monthly` | 500, same error |
-| `/ltp/nifty/monthly/22700/ce` | 500, same error |
-| `/ltp/NIFTY/22700/CE` | 500, same error |
+### But the numbers are not trustworthy
 
-This needs a fix on HNICALLS' server, not in the client. Until then the
-per-contract fallback in `HnicallsPollingStream` has nothing to fall back to,
-and the option chain is the only route left for option prices.
+Measured across a strike ladder with spot at 22716.2:
+
+| Strike | CE ltp | CE oi | PE ltp | PE oi |
+|---|---|---|---|---|
+| 22000 | 717.65 | 224,185 | 0.05 | 11,602,630 |
+| 22500 | 215.75 | 1,522,820 | 0.05 | 9,579,050 |
+| 22700 | 16.25 | 16,266,510 | 0.05 | 20,374,835 |
+| 23000 | 0.05 | 10,555,415 | 283.3 | 3,197,010 |
+| 23500 | 0.05 | 12,625,990 | 784 | 2,391,935 |
+
+- **CE ladder is sound** — it decays monotonically, which is what an option
+  ladder must do.
+- **PE ladder is broken.** A 22700 PE with spot at 22716 is in the money by
+  ~16, so it cannot be worth 0.05. And a 23000 PE is ~284 points out of the
+  money, so it cannot be worth 283.3. Both ends are impossible.
+- **`oi` is meaningless.** Real NIFTY open interest peaks at the money and falls
+  off hard at the wings; here 22000 CE carries 224k while 22000 PE carries
+  11.6 million, and the ATM carries 16 million. These are not real OI numbers.
+
+Treating a 0.05 price as real is a much worse failure than showing nothing: on a
+16-point in-the-money position it reads as a 99% loss. The option chain remains
+the only source trusted for option prices.
 
 ## Why the chain also 500s
 
