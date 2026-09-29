@@ -34,7 +34,7 @@ class PositionCard extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -50,7 +50,7 @@ class PositionCard extends StatelessWidget {
                   ProductTag(product: p.product, dimmed: closed),
                 ],
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 8),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
@@ -60,7 +60,7 @@ class PositionCard extends StatelessWidget {
                       children: [
                         _SymbolTitle(symbol: p.symbol, dimmed: closed),
                         if (p.segment.isNotEmpty) ...[
-                          const SizedBox(height: 2),
+                          const SizedBox(height: 3),
                           Text(p.segment, style: _segmentStyle),
                         ],
                       ],
@@ -81,7 +81,7 @@ class PositionCard extends StatelessWidget {
                               ),
                             ),
                           ),
-                          const SizedBox(height: 2),
+                          const SizedBox(height: 3),
                           Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -120,8 +120,8 @@ class _SymbolTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final base = TextStyle(
-      fontSize: 14,
-      fontWeight: dimmed ? FontWeight.w400 : FontWeight.w500,
+      fontSize: 16,
+      fontWeight: dimmed ? FontWeight.w400 : FontWeight.w600,
       letterSpacing: 0.1,
       color: dimmed ? TradePalette.slate400 : TradePalette.slate900,
       height: 1.2,
@@ -150,7 +150,7 @@ class _SymbolTitle extends StatelessWidget {
               child: Text(
                 m.group(2)!,
                 style: const TextStyle(
-                  fontSize: 9.5,
+                  fontSize: 10.5,
                   fontWeight: FontWeight.w600,
                   color: TradePalette.slate500,
                   height: 1.0,
@@ -204,12 +204,12 @@ class ProductTag extends StatelessWidget {
     final alpha = dimmed ? 0.6 : (isMis ? 0.6 : 1.0);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(color: bg.withValues(alpha: alpha)),
       child: Text(
         product,
         style: TextStyle(
-          fontSize: 10,
+          fontSize: 11,
           fontWeight: FontWeight.w600,
           color: fg.withValues(alpha: alpha),
         ),
@@ -219,22 +219,22 @@ class ProductTag extends StatelessWidget {
 }
 
 const _segmentStyle = TextStyle(
-  fontSize: 10,
+  fontSize: 11.5,
   color: TradePalette.slate400,
   fontFeatures: [FontFeature.tabularFigures()],
 );
 const _pnlStyle = TextStyle(
-  fontSize: 13,
+  fontSize: 16,
   fontWeight: FontWeight.w600,
   fontFeatures: [FontFeature.tabularFigures()],
 );
 const _ltpLabelStyle = TextStyle(
-  fontSize: 10,
+  fontSize: 11.5,
   color: TradePalette.slate400,
   fontFeatures: [FontFeature.tabularFigures()],
 );
 const _ltpValueStyle = TextStyle(
-  fontSize: 10,
+  fontSize: 12.5,
   color: TradePalette.slate600,
   fontFeatures: [FontFeature.tabularFigures()],
 );
@@ -275,7 +275,7 @@ class _QtyAvgRow extends StatelessWidget {
 }
 
 const _labelStyle = TextStyle(
-  fontSize: 12,
+  fontSize: 13,
   fontWeight: FontWeight.w400,
   color: TradePalette.slate400,
   fontFeatures: [FontFeature.tabularFigures()],

@@ -208,7 +208,8 @@ class SymbolParts {
   });
 
   factory SymbolParts.parse(String symbol) {
-    final weekly = RegExp(r'^(.+\d+)(st|nd|rd|th)\s+(.*)$').firstMatch(symbol);
+    final weekly =
+        RegExp(r'^(.+\d+)(st|nd|rd|th)\s+(?:W\s+)?(.*)$').firstMatch(symbol);
     if (weekly != null) {
       return SymbolParts(
         head: weekly.group(1)!,

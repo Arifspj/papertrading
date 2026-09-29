@@ -5,6 +5,7 @@ import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
 import 'repositories/mock_positions_repository.dart';
 import 'repositories/positions_repository.dart';
+import 'repositories/watchlist_repository.dart';
 import 'screens/shell_screen.dart';
 
 /// CyberPulse — paper trading terminal.
@@ -29,6 +30,9 @@ class CyberPulseApp extends StatelessWidget {
         providers: [
           Provider<PositionsRepository>(
             create: (_) => MockPositionsRepository(),
+          ),
+          Provider<WatchlistRepository>(
+            create: (_) => MockWatchlistRepository(),
           ),
         ],
         child: Consumer<ThemeController>(
