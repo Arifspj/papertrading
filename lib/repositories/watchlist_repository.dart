@@ -46,28 +46,28 @@ class MockWatchlistRepository implements WatchlistRepository {
   static const _catalog = [
     ..._seed,
     WatchItem(
-      symbol: 'NIFTY 24OCT 22500 CE',
+      symbol: 'NIFTY 24th OCT 22500 CE',
       lastPrice: 142.30,
       change: 18.45,
       changePct: 14.88,
       segment: 'NFO',
     ),
     WatchItem(
-      symbol: 'NIFTY 24OCT 22400 PE',
+      symbol: 'NIFTY 24th OCT 22400 PE',
       lastPrice: 86.50,
       change: -12.10,
       changePct: -12.27,
       segment: 'NFO',
     ),
     WatchItem(
-      symbol: 'BANKNIFTY 23OCT 51200 CE',
+      symbol: 'BANKNIFTY 23rd OCT 51200 CE',
       lastPrice: 345.80,
       change: 42.60,
       changePct: 14.05,
       segment: 'NFO',
     ),
     WatchItem(
-      symbol: 'BANKNIFTY 23OCT 50800 PE',
+      symbol: 'BANKNIFTY 23rd OCT 50800 PE',
       lastPrice: 210.15,
       change: -28.40,
       changePct: -11.90,

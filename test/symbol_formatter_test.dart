@@ -26,12 +26,22 @@ void main() {
       expect(p.isWeekly, isFalse);
     });
 
-    test('day+month token (24OCT) splits into day and month', () {
+    test('day+month token (24OCT) infers the ordinal suffix', () {
       final p = SymbolParts.parse('NIFTY 24OCT 22500 CE');
       expect(p.day, '24');
-      expect(p.ordinal, isNull);
+      expect(p.ordinal, 'th');
       expect(p.month, 'OCT');
       expect(p.isWeekly, isTrue);
+    });
+
+    test('ordinal inference covers st/nd/rd/th and 11-13', () {
+      expect(SymbolParts.parse('NIFTY 21OCT 1 CE').ordinal, 'st');
+      expect(SymbolParts.parse('NIFTY 22OCT 1 CE').ordinal, 'nd');
+      expect(SymbolParts.parse('NIFTY 23OCT 1 CE').ordinal, 'rd');
+      expect(SymbolParts.parse('NIFTY 24OCT 1 CE').ordinal, 'th');
+      expect(SymbolParts.parse('NIFTY 11OCT 1 CE').ordinal, 'th');
+      expect(SymbolParts.parse('NIFTY 12OCT 1 CE').ordinal, 'th');
+      expect(SymbolParts.parse('NIFTY 13OCT 1 CE').ordinal, 'th');
     });
 
     test('legacy standalone W token is dropped', () {
@@ -43,10 +53,13 @@ void main() {
       expect(p.isWeekly, isTrue);
     });
 
-    test('futures never carry the weekly tag', () {
-      final p = SymbolParts.parse('NIFTY NOV FUT');
+    test('futures never carry the weekly tag or an expiry day', () {
+      final p = SymbolParts.parse('NIFTY 28NOV FUT');
       expect(p.instrumentType, 'FUT');
       expect(p.isFuture, isTrue);
+      expect(p.day, isNull);
+      expect(p.ordinal, isNull);
+      expect(p.month, 'NOV');
       expect(p.kind, ExpiryKind.monthly);
       expect(p.instrumentLabel, 'Futures');
     });

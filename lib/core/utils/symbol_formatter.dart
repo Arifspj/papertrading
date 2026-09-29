@@ -14,10 +14,11 @@ class SymbolParts {
   final String raw;
   final String underlying;
 
-  /// Day of expiry, e.g. `01` or `24`. Null for monthly contracts.
+  /// Day of expiry, e.g. `01` or `24`. Options only. Null for monthly.
   final String? day;
 
   /// Ordinal suffix of the day, e.g. `st`, `th`. Rendered as a superscript.
+  /// Inferred from the day number when the source omits it (`24OCT` -> `th`).
   final String? ordinal;
 
   /// Month of expiry, e.g. `OCT`.
@@ -55,6 +56,18 @@ class SymbolParts {
   static final _dayMonth = RegExp(r'^(\d{1,2})([A-Z]{3})$');
   static final _month = RegExp(r'^([A-Z]{3})$');
   static final _number = RegExp(r'^\d+(\.\d+)?$');
+
+  /// English ordinal suffix for a day number: 1st, 2nd, 3rd, 4th ... 21st,
+  /// 22nd, 23rd, 24th, with 11/12/13 taking "th".
+  static String ordinalSuffix(int day) {
+    if (day % 100 >= 11 && day % 100 <= 13) return 'th';
+    return switch (day % 10) {
+      1 => 'st',
+      2 => 'nd',
+      3 => 'rd',
+      _ => 'th',
+    };
+  }
 
   factory SymbolParts.parse(String symbol) {
     final tokens = symbol
@@ -99,6 +112,14 @@ class SymbolParts {
     }
 
     final isOption = instrument == 'CE' || instrument == 'PE';
+    // Expiry day (and its ordinal) only exists for option contracts; futures
+    // are always month-only.
+    if (!isOption) {
+      day = null;
+      ordinal = null;
+    } else if (day != null && ordinal == null) {
+      ordinal = ordinalSuffix(int.parse(day));
+    }
     final kind = day != null && isOption
         ? ExpiryKind.weekly
         : month != null
