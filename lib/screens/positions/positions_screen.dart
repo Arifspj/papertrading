@@ -178,10 +178,17 @@ class _PositionsScreenState extends State<PositionsScreen> {
                   padding: const EdgeInsets.only(top: 44),
                   child: _PortfolioPanel(
                     searching: _searching,
-                    filtered: _filter != PositionFilter.all,
+                    filter: _filter,
                     onSearchPressed: _toggleSearch,
                     onFilterPressed: _openFilter,
+                    onFilterCleared: () {
+                      setState(() => _filter = PositionFilter.all);
+                      _applyVisible();
+                    },
+                    onQueryChanged: _applyVisible,
                     searchController: _searchCtrl,
+                    resultCount: _visible.length,
+                    totalCount: _all.length,
                     children: _buildPanelChildren(c),
                   ),
                 ),
@@ -221,23 +228,33 @@ class _PositionsScreenState extends State<PositionsScreen> {
 /// White rounded-t-3xl panel containing the toolbar + position list.
 class _PortfolioPanel extends StatelessWidget {
   final bool searching;
-  final bool filtered;
+  final PositionFilter filter;
   final VoidCallback onSearchPressed;
   final VoidCallback onFilterPressed;
+  final VoidCallback onFilterCleared;
+  final VoidCallback onQueryChanged;
   final TextEditingController searchController;
+  final int resultCount;
+  final int totalCount;
   final List<Widget> children;
 
   const _PortfolioPanel({
     required this.searching,
-    required this.filtered,
+    required this.filter,
     required this.onSearchPressed,
     required this.onFilterPressed,
+    required this.onFilterCleared,
+    required this.onQueryChanged,
     required this.searchController,
+    required this.resultCount,
+    required this.totalCount,
     required this.children,
   });
 
   @override
   Widget build(BuildContext context) {
+    final filterActive = filter != PositionFilter.all;
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -261,7 +278,7 @@ class _PortfolioPanel extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
             child: _Toolbar(
               searching: searching,
-              filtered: filtered,
+              filtered: filterActive,
               onSearchPressed: onSearchPressed,
               onFilterPressed: onFilterPressed,
             ),
@@ -269,12 +286,89 @@ class _PortfolioPanel extends StatelessWidget {
           if (searching)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: _SearchField(controller: searchController),
+              child: _SearchField(
+                controller: searchController,
+                onChanged: (_) => onQueryChanged(),
+                onClear: onSearchPressed,
+              ),
+            ),
+          if (searching || filterActive)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: _ResultMeta(
+                resultCount: resultCount,
+                totalCount: totalCount,
+                filter: filter,
+                onFilterCleared: onFilterCleared,
+              ),
             ),
           const SizedBox(height: 8),
           ...children,
         ],
       ),
+    );
+  }
+}
+
+/// "3 of 4 positions" plus a removable chip for the active filter.
+class _ResultMeta extends StatelessWidget {
+  final int resultCount;
+  final int totalCount;
+  final PositionFilter filter;
+  final VoidCallback onFilterCleared;
+
+  const _ResultMeta({
+    required this.resultCount,
+    required this.totalCount,
+    required this.filter,
+    required this.onFilterCleared,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final filterActive = filter != PositionFilter.all;
+    return Row(
+      children: [
+        Text(
+          '$resultCount of $totalCount positions',
+          style: const TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w500,
+            color: TradePalette.slate400,
+          ),
+        ),
+        const Spacer(),
+        if (filterActive)
+          GestureDetector(
+            onTap: onFilterCleared,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(8, 3, 6, 3),
+              decoration: BoxDecoration(
+                color: TradePalette.slate100,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    filter.label,
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: TradePalette.slate700,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(
+                    LucideIcons.x,
+                    size: 11,
+                    color: TradePalette.slate500,
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -436,10 +530,26 @@ class _ToolAction extends StatelessWidget {
           child: Ink(
             width: 46,
             height: 34,
-            child: Icon(
-              icon,
-              size: 16,
-              color: TradePalette.primary,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  icon,
+                  size: 16,
+                  color: active
+                      ? TradePalette.slate900
+                      : TradePalette.primary,
+                ),
+                const SizedBox(height: 2),
+                Container(
+                  width: active ? 4 : 0,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: TradePalette.primary,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -448,16 +558,44 @@ class _ToolAction extends StatelessWidget {
   }
 }
 
-class _SearchField extends StatelessWidget {
+class _SearchField extends StatefulWidget {
   final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
 
-  const _SearchField({required this.controller});
+  const _SearchField({
+    required this.controller,
+    required this.onChanged,
+    required this.onClear,
+  });
+
+  @override
+  State<_SearchField> createState() => _SearchFieldState();
+}
+
+class _SearchFieldState extends State<_SearchField> {
+  late final VoidCallback _listener;
+
+  @override
+  void initState() {
+    super.initState();
+    _listener = () => setState(() {});
+    widget.controller.addListener(_listener);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_listener);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final hasText = widget.controller.text.isNotEmpty;
     return TextField(
-      controller: controller,
+      controller: widget.controller,
       autofocus: true,
+      onChanged: widget.onChanged,
       style: AppText.monoValue.copyWith(
         color: TradePalette.slate900,
         fontSize: 13,
@@ -471,6 +609,19 @@ class _SearchField extends StatelessWidget {
           size: 15,
           color: TradePalette.primary,
         ),
+        suffixIcon: hasText
+            ? IconButton(
+                onPressed: () {
+                  widget.controller.clear();
+                  widget.onChanged('');
+                },
+                icon: const Icon(
+                  LucideIcons.circleX,
+                  size: 15,
+                  color: TradePalette.slate500,
+                ),
+              )
+            : null,
         filled: true,
         fillColor: TradePalette.slate100,
         isDense: true,
