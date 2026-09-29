@@ -200,11 +200,17 @@ void main() {
       ws.push(StreamStatus.live, quotes: [quote]);
       await Future<void>.delayed(const Duration(milliseconds: 140));
 
+      // The socket keeps ownership of the status...
       expect(ws.stopped, isFalse);
-      expect(poll.started, isFalse);
       expect(c.isLive, isTrue);
       expect(c.quoteFor('NIFTY 22700 CE')?.ltp, 340.74);
+
+      // ...but the poller also runs, because the socket has no feed for option
+      // premiums. It used to stay shut here, which left every option row on its
+      // mock price while the indices looked perfectly live.
+      expect(poll.started, isTrue);
     });
+
 
     test('does not fall back when the socket is unsupported', () async {
       final poll = FakeStream();

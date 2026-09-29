@@ -19,7 +19,7 @@ import 'market_stream.dart';
 /// Contracts the watchlist or positions book shows are registered through
 /// [trackSymbols]. One chain call per underlying then covers all of its
 /// strikes, so adding rows to a list costs no extra requests.
-class HnicallsPollingStream implements MarketStream {
+class HnicallsPollingStream implements LiveOptionPoller {
   HnicallsPollingStream({
     required this.client,
     this.instruments = const ['NIFTY', 'BANKNIFTY', 'SENSEX', 'FINNIFTY'],
@@ -50,6 +50,7 @@ class HnicallsPollingStream implements MarketStream {
   ///
   /// Returns true when the tracked set changed, so the caller can pull a fresh
   /// cycle instead of waiting for the next interval.
+  @override
   bool trackSymbols(Iterable<String> symbols) {
     var changed = false;
     for (final symbol in symbols) {
@@ -69,6 +70,7 @@ class HnicallsPollingStream implements MarketStream {
   }
 
   /// Stop polling for [symbols] (a watchlist row was deleted, a book emptied).
+  @override
   bool untrackSymbols(Iterable<String> symbols) {
     var changed = false;
     for (final symbol in symbols) {
@@ -132,6 +134,7 @@ class HnicallsPollingStream implements MarketStream {
   }
 
   /// One poll cycle. Safe to call manually (pull-to-refresh).
+  @override
   Future<void> tick() async {
     if (_stopped || _inFlight) return;
     _inFlight = true;

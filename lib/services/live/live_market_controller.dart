@@ -49,6 +49,14 @@ class LiveMarketController extends ChangeNotifier {
   /// silently remove an index from the strip.
   final Map<String, LiveQuote> _tickerQuotes = {};
   StreamSubscription<StreamEvent>? _sub;
+
+  /// The polling transport is subscribed alongside the socket rather than
+  /// instead of it. HNICALLS pushes index frames over the websocket but has no
+  /// socket feed for option premiums, so the only way a tracked option contract
+  /// ever gets a price is the HTTP poll. When this subscription used to be the
+  /// fallback alone, a healthy socket locked the poll out and every option row
+  /// sat on its mock price.
+  StreamSubscription<StreamEvent>? _pollSub;
   StreamStatus _status = StreamStatus.idle;
   MarketStream? _active;
   String? _message;
@@ -97,12 +105,26 @@ class LiveMarketController extends ChangeNotifier {
     _wsDelivered = false;
     if (_ws.isSupported) {
       _active = _ws;
-      _sub = _ws.events.listen(_onEvent);
+      _sub = _ws.events.listen(_onPrimaryEvent);
       await _ws.start();
       _fallbackTimer = Timer(wsGracePeriod, _fallbackToPolling);
+      await _startPollAlongside();
     } else {
       await _fallbackToPolling();
     }
+  }
+
+  /// Bring the HTTP poll up next to the socket so option contracts keep a live
+  /// price. It stays the secondary transport: the socket keeps the status.
+  Future<void> _startPollAlongside() async {
+    await _pollSub?.cancel();
+    _pollSub = _poll.events.listen(_onSecondaryEvent);
+    await _poll.start();
+  }
+
+  LiveOptionPoller? get _poller {
+    final p = _poll;
+    return p is LiveOptionPoller ? p : null;
   }
 
   Future<void> _fallbackToPolling() async {
@@ -111,19 +133,36 @@ class LiveMarketController extends ChangeNotifier {
     _fallbackTimer = null;
     await _sub?.cancel();
     if (_active != null) await _ws.stop();
+    // The poller may already be running as the sidecar; drop that subscription
+    // so it is not driven twice (and does not end up with two poll timers).
+    await _pollSub?.cancel();
+    _pollSub = null;
     _active = _poll;
-    _sub = _poll.events.listen(_onEvent);
+    _sub = _poll.events.listen(_onPrimaryEvent);
     await _poll.start();
   }
 
-  void _onEvent(StreamEvent event) {
+  /// Events from whichever transport currently owns the status.
+  void _onPrimaryEvent(StreamEvent event) => _applyEvent(event, isPrimary: true);
+
+  /// Events from the poller while the socket is primary. Prices are merged in,
+  /// but the status is left alone: a momentary gap in the option poll must not
+  /// report the whole app as degraded while the socket is still streaming
+  /// indices. Identity decides the role, not the transport name, because a
+  /// test double can share a name with the real thing.
+  void _onSecondaryEvent(StreamEvent event) =>
+      _applyEvent(event, isPrimary: false);
+
+  void _applyEvent(StreamEvent event, {required bool isPrimary}) {
     if (event.status == StreamStatus.live && event.quotes.isNotEmpty) {
       _wsDelivered = true;
       _fallbackTimer?.cancel();
       _fallbackTimer = null;
     }
-    _status = event.status;
-    _message = event.message;
+    if (isPrimary) {
+      _status = event.status;
+      _message = event.message;
+    }
     for (final q in event.quotes) {
       _quotes[q.symbol] = q;
       if (q.source == kTickerQuoteSource) _tickerQuotes[q.symbol] = q;
@@ -131,7 +170,8 @@ class LiveMarketController extends ChangeNotifier {
     // A cycle that came back with nothing means the feed is gone, not that the
     // last prices are still good. Drop the ticker rows so the header strip
     // disappears, and let it come back on the next successful poll.
-    if (event.quotes.isEmpty &&
+    if (isPrimary &&
+        event.quotes.isEmpty &&
         event.status == StreamStatus.degraded) {
       _dropTickerQuotes();
     }
@@ -146,11 +186,12 @@ class LiveMarketController extends ChangeNotifier {
     return true;
   }
 
-  /// Pull one cycle from the active polling transport (no-op on WebSocket).
+  /// Pull one poll cycle immediately. This talks to the poll transport
+  /// directly rather than to the active one: while the socket is primary the
+  /// poll is the only source of option premiums, and waiting for the active
+  /// transport to be the poller meant a tracked contract never got a price.
   Future<void> refresh() async {
-    if (_active is HnicallsPollingStream) {
-      await (_active! as HnicallsPollingStream).tick();
-    }
+    await _poller?.tick();
   }
 
   /// Ask for live premiums for the contracts the UI is showing.
@@ -159,14 +200,14 @@ class LiveMarketController extends ChangeNotifier {
   /// symbols cost anything, and the first change pulls a cycle straight away so
   /// a freshly added row does not sit on its mock price for 15 seconds.
   void trackSymbols(Iterable<String> symbols) {
-    final poll = _poll;
-    if (poll is! HnicallsPollingStream) return;
+    final poll = _poller;
+    if (poll == null) return;
     if (poll.trackSymbols(symbols)) unawaited(refresh());
   }
 
   void untrackSymbols(Iterable<String> symbols) {
-    final poll = _poll;
-    if (poll is! HnicallsPollingStream) return;
+    final poll = _poller;
+    if (poll == null) return;
     if (poll.untrackSymbols(symbols)) unawaited(refresh());
   }
 
@@ -175,6 +216,8 @@ class LiveMarketController extends ChangeNotifier {
     _fallbackTimer = null;
     await _sub?.cancel();
     _sub = null;
+    await _pollSub?.cancel();
+    _pollSub = null;
     _active = null;
   }
 
