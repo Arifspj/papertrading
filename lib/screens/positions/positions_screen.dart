@@ -9,7 +9,7 @@ import '../../repositories/positions_repository.dart';
 import '../../core/utils/formatters.dart';
 import '../../widgets/scale_fit.dart';
 import 'widgets/position_card.dart';
-import 'widgets/position_detail_sheet.dart';
+import 'widgets/order_pad_sheet.dart';
 import 'widgets/position_filter_sheet.dart';
 import 'widgets/positions_header.dart';
 
@@ -95,20 +95,32 @@ class _PositionsScreenState extends State<PositionsScreen> {
   }
 
   Future<void> _openPosition(Position p) async {
-    final squaredOff = await showPositionDetailSheet(context, position: p);
-    if (squaredOff == true) {
-      await _repo.squareOff(p.symbol);
+    final action = await showOrderPadSheet(context, position: p);
+    if (action == null) return;
+    if (action == OrderPadAction.buy) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
           SnackBar(
-            content: Text('${p.symbol} squared off (demo)'),
+            content: Text('${p.symbol} added back (demo)'),
             backgroundColor: context.cyber.surface,
           ),
         );
       _load();
+      return;
     }
+    await _repo.squareOff(p.symbol);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('${p.symbol} squared off (demo)'),
+          backgroundColor: context.cyber.surface,
+        ),
+      );
+    _load();
   }
 
   @override
@@ -314,7 +326,11 @@ class _HeroCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             value,
-            style: AppText.heroPnl.copyWith(
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w600,
+              letterSpacing: -0.4,
+              height: 1.1,
               color: isProfit
                   ? TradePalette.positiveGreen
                   : TradePalette.negativeRed,

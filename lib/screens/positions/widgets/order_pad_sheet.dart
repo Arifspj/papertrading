@@ -1,0 +1,874 @@
+import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+
+import '../../../core/theme/cyber_colors.dart';
+import '../../../core/utils/formatters.dart';
+import '../../../models/position.dart';
+
+/// Trade direction chosen in the [OrderPadSheet].
+enum OrderPadAction { buy, sell }
+
+/// Kite-style Order Pad bottom sheet (reference "Order Execution" screen).
+/// For an open position the default side is Sell; for a squared-off position
+/// it is Buy. The side can be toggled. Returns the confirmed action or null.
+Future<OrderPadAction?> showOrderPadSheet(
+  BuildContext context, {
+  required Position position,
+}) {
+  return showModalBottomSheet<OrderPadAction>(
+    context: context,
+    backgroundColor: const Color(0xFFF4F6F8),
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+    ),
+    isScrollControlled: true,
+    builder: (_) => _OrderPadSheet(position: position),
+  );
+}
+
+const _sheetBg = Color(0xFFF4F6F8);
+
+enum _TabKind { regular, iceberg }
+
+enum _ProductKind { intraday, overnight }
+
+class _OrderPadSheet extends StatefulWidget {
+  final Position position;
+
+  const _OrderPadSheet({required this.position});
+
+  @override
+  State<_OrderPadSheet> createState() => _OrderPadSheetState();
+}
+
+class _OrderPadSheetState extends State<_OrderPadSheet> {
+  late OrderPadAction _side;
+  late final TextEditingController _qtyCtrl;
+  late final TextEditingController _limitCtrl;
+  _TabKind _tab = _TabKind.regular;
+  _ProductKind _product = _ProductKind.overnight;
+  bool _moreOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final p = widget.position;
+    _side = p.isClosed ? OrderPadAction.buy : OrderPadAction.sell;
+    final qty = p.isClosed ? 20 : p.quantity.abs();
+    _qtyCtrl = TextEditingController(text: formatQty(qty.toDouble()));
+    _limitCtrl = TextEditingController(text: formatPlain(p.lastTradedPrice));
+  }
+
+  @override
+  void dispose() {
+    _qtyCtrl.dispose();
+    _limitCtrl.dispose();
+    super.dispose();
+  }
+
+  void _confirm(OrderPadAction action) {
+    Navigator.of(context).pop(action);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.position;
+    final isBuy = _side == OrderPadAction.buy;
+
+    return SafeArea(
+      top: false,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 10),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: TradePalette.slate200,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+          _Header(position: p, onBack: () => Navigator.of(context).pop()),
+          _PriceRow(position: p),
+          _Tabs(
+            selected: _tab,
+            onChanged: (t) => setState(() => _tab = t),
+          ),
+          Flexible(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  _FormBox(
+                    qtyCtrl: _qtyCtrl,
+                    limitCtrl: _limitCtrl,
+                    product: _product,
+                    onProductChanged: (v) => setState(() => _product = v),
+                  ),
+                  _MoreToggle(
+                    open: _moreOpen,
+                    onToggle: () => setState(() => _moreOpen = !_moreOpen),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          _StickyFooter(
+            position: p,
+            isBuy: isBuy,
+            side: _side,
+            onSideChanged: (s) => setState(() => _side = s),
+            onComplete: _confirm,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Weekly-option aware symbol title: "SENSEX 01st W OCT 72900 CE".
+class _SymbolTitle extends StatelessWidget {
+  final SymbolParts parts;
+
+  const _SymbolTitle({required this.parts});
+
+  @override
+  Widget build(BuildContext context) {
+    final base = const TextStyle(
+      fontSize: 16,
+      fontWeight: FontWeight.w700,
+      color: TradePalette.slate900,
+      height: 1.2,
+    );
+    return Text.rich(
+      TextSpan(
+        style: base,
+        children: [
+          TextSpan(text: parts.head),
+          if (parts.suffix != null)
+            WidgetSpan(
+              alignment: PlaceholderAlignment.baseline,
+              baseline: TextBaseline.alphabetic,
+              child: Transform.translate(
+                offset: const Offset(0, -3),
+                child: Text(
+                  parts.suffix!,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: TradePalette.slate500,
+                    height: 1.0,
+                  ),
+                ),
+              ),
+            ),
+          if (parts.weekly)
+            WidgetSpan(
+              alignment: PlaceholderAlignment.middle,
+              child: Container(
+                width: 16,
+                height: 16,
+                margin: const EdgeInsets.symmetric(horizontal: 2),
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: TradePalette.weekBadge,
+                  shape: BoxShape.circle,
+                ),
+                child: const Text(
+                  'W',
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    height: 1,
+                  ),
+                ),
+              ),
+            ),
+          TextSpan(text: parts.tail),
+        ],
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+}
+
+class SymbolParts {
+  final String head;
+  final String? suffix;
+  final bool weekly;
+  final String tail;
+
+  const SymbolParts({
+    required this.head,
+    required this.suffix,
+    required this.weekly,
+    required this.tail,
+  });
+
+  factory SymbolParts.parse(String symbol) {
+    final weekly = RegExp(r'^(.+\d+)(st|nd|rd|th)\s+(.*)$').firstMatch(symbol);
+    if (weekly != null) {
+      return SymbolParts(
+        head: weekly.group(1)!,
+        suffix: weekly.group(2),
+        weekly: true,
+        tail: ' ${weekly.group(3)!}',
+      );
+    }
+    return SymbolParts(head: symbol, suffix: null, weekly: false, tail: '');
+  }
+}
+
+class _Header extends StatelessWidget {
+  final Position position;
+  final VoidCallback onBack;
+
+  const _Header({required this.position, required this.onBack});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: onBack,
+            icon: const Icon(
+              LucideIcons.chevronLeft,
+              size: 24,
+              color: TradePalette.slate600,
+            ),
+          ),
+          Flexible(
+            child: _SymbolTitle(parts: SymbolParts.parse(position.symbol)),
+          ),
+          IconButton(
+            onPressed: () {},
+            icon: const Icon(
+              LucideIcons.ellipsisVertical,
+              size: 20,
+              color: TradePalette.slate400,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PriceRow extends StatelessWidget {
+  final Position position;
+
+  const _PriceRow({required this.position});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = position;
+    final changeAmt = p.lastTradedPrice - p.averagePrice;
+    final pct = p.averagePrice == 0
+        ? 0.0
+        : (changeAmt / p.averagePrice) * 100;
+    final up = changeAmt >= 0;
+    final color = up ? TradePalette.positiveGreen : TradePalette.negativeRed;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+      child: Row(
+        children: [
+          Text(
+            p.segment,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: TradePalette.slate500,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            '\u20B9 ${formatPlain(p.lastTradedPrice)}',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '${up ? '+' : ''}${formatPlain(changeAmt)} '
+            '(${up ? '+' : ''}${formatPlain(pct)}%)',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Tabs extends StatelessWidget {
+  final _TabKind selected;
+  final ValueChanged<_TabKind> onChanged;
+
+  const _Tabs({required this.selected, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        children: [
+          _tabButton(_TabKind.regular, 'Regular'),
+          const SizedBox(width: 24),
+          _tabButton(_TabKind.iceberg, 'Iceberg'),
+        ],
+      ),
+    );
+  }
+
+  Widget _tabButton(_TabKind kind, String label) {
+    final active = selected == kind;
+    return GestureDetector(
+      onTap: () => onChanged(kind),
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+                color: active ? TradePalette.primary : TradePalette.slate400,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Container(
+              width: active ? 24 : 0,
+              height: 2,
+              decoration: BoxDecoration(
+                color: TradePalette.primary,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FormBox extends StatelessWidget {
+  final TextEditingController qtyCtrl;
+  final TextEditingController limitCtrl;
+  final _ProductKind product;
+  final ValueChanged<_ProductKind> onProductChanged;
+
+  const _FormBox({
+    required this.qtyCtrl,
+    required this.limitCtrl,
+    required this.product,
+    required this.onProductChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: TradePalette.slate200),
+      ),
+      child: Column(
+        children: [
+          _InputRow(
+            label: 'Quantity',
+            hint: '',
+            controller: qtyCtrl,
+          ),
+          const SizedBox(height: 14),
+          _InputRow(
+            label: 'Limit',
+            hint: '',
+            controller: limitCtrl,
+            withEdit: true,
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _radio('Intraday', product == _ProductKind.intraday, () {
+                onProductChanged(_ProductKind.intraday);
+              }),
+              const SizedBox(width: 32),
+              _radio(
+                  'Overnight', product == _ProductKind.overnight, () {
+                onProductChanged(_ProductKind.overnight);
+              }),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _radio(String label, bool selected, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Row(
+        children: [
+          Container(
+            width: 16,
+            height: 16,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: selected ? TradePalette.primary : TradePalette.slate300,
+                width: selected ? 5 : 1.5,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              color: selected ? TradePalette.slate900 : TradePalette.slate600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InputRow extends StatelessWidget {
+  final String label;
+  final String hint;
+  final TextEditingController controller;
+  final bool withEdit;
+
+  const _InputRow({
+    required this.label,
+    required this.hint,
+    required this.controller,
+    this.withEdit = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: TradePalette.slate700,
+              ),
+            ),
+            if (withEdit) ...[
+              const SizedBox(width: 4),
+              const Icon(
+                LucideIcons.pencil,
+                size: 13,
+                color: TradePalette.primary,
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 6),
+        SizedBox(
+          height: 44,
+          child: TextField(
+            controller: controller,
+            keyboardType: const TextInputType.numberWithOptions(
+              decimal: true,
+            ),
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              color: TradePalette.slate900,
+            ),
+            decoration: InputDecoration(
+              hintText: hint,
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 12,
+              ),
+              filled: true,
+              fillColor: Colors.white,
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: TradePalette.slate300),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(
+                  color: TradePalette.primary,
+                  width: 1.5,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MoreToggle extends StatelessWidget {
+  final bool open;
+  final VoidCallback onToggle;
+
+  const _MoreToggle({required this.open, required this.onToggle});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        InkWell(
+          onTap: onToggle,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Column(
+              children: [
+                const Text(
+                  'More',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: TradePalette.slate500,
+                  ),
+                ),
+                Icon(
+                  open ? LucideIcons.chevronUp : LucideIcons.chevronDown,
+                  size: 16,
+                  color: TradePalette.slate400,
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (open)
+          Container(
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: TradePalette.slate200),
+            ),
+            child: Column(
+              children: const [
+                _MoreRow('Instrument type', 'Options (CE)'),
+                SizedBox(height: 12),
+                _MoreRow('Product', 'MIS'),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _MoreRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _MoreRow(this.label, this.value);
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            color: TradePalette.slate500,
+          ),
+        ),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: TradePalette.slate700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _StickyFooter extends StatelessWidget {
+  final Position position;
+  final bool isBuy;
+  final OrderPadAction side;
+  final ValueChanged<OrderPadAction> onSideChanged;
+  final ValueChanged<OrderPadAction> onComplete;
+
+  const _StickyFooter({
+    required this.position,
+    required this.isBuy,
+    required this.side,
+    required this.onSideChanged,
+    required this.onComplete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        color: _sheetBg,
+        border: Border(
+          top: BorderSide(color: TradePalette.slate200),
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+      child: Column(
+        children: [
+          _marginRow(),
+          const SizedBox(height: 8),
+          _sideSwitcher(),
+          const SizedBox(height: 8),
+          _SwipeButton(
+            color: isBuy ? TradePalette.primary : TradePalette.negativeRed,
+            label: isBuy ? 'Swipe to Buy' : 'Swipe to Sell',
+            onComplete: () => onComplete(side),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _marginRow() {
+    final margin = position.quantity.abs() * position.lastTradedPrice;
+    return Row(
+      children: [
+        const Text(
+          'Margin',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: TradePalette.slate500,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          '\u20B9${formatPlain(margin)}',
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: TradePalette.primary,
+          ),
+        ),
+        const SizedBox(width: 8),
+        const Text(
+          '|',
+          style: TextStyle(fontSize: 11, color: TradePalette.slate300),
+        ),
+        const SizedBox(width: 8),
+        const Text(
+          'Avail.',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: TradePalette.slate500,
+          ),
+        ),
+        const SizedBox(width: 6),
+        const Text(
+          '\u20B922.30',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: TradePalette.primary,
+          ),
+        ),
+        const Spacer(),
+        const Icon(
+          LucideIcons.refreshCw,
+          size: 14,
+          color: TradePalette.slate400,
+        ),
+      ],
+    );
+  }
+
+  Widget _sideSwitcher() {
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: TradePalette.slate200,
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Row(
+        children: [
+          _seg(
+            l: 'Sell',
+            active: !isBuy,
+            color: TradePalette.negativeRed,
+            onTap: () => onSideChanged(OrderPadAction.sell),
+          ),
+          _seg(
+            l: 'Buy',
+            active: isBuy,
+            color: TradePalette.positiveGreen,
+            onTap: () => onSideChanged(OrderPadAction.buy),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _seg({
+    required String l,
+    required bool active,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: active ? Colors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: active
+                ? const [
+                    BoxShadow(
+                      color: Color(0x140F172A),
+                      blurRadius: 6,
+                      offset: Offset(0, 1),
+                    ),
+                  ]
+                : null,
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            l,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: active ? color : TradePalette.slate500,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SwipeButton extends StatefulWidget {
+  final Color color;
+  final String label;
+  final VoidCallback onComplete;
+
+  const _SwipeButton({
+    required this.color,
+    required this.label,
+    required this.onComplete,
+  });
+
+  @override
+  State<_SwipeButton> createState() => _SwipeButtonState();
+}
+
+class _SwipeButtonState extends State<_SwipeButton> {
+  double _dx = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const knob = 44.0;
+        const inset = 4.0;
+        final maxDrag = constraints.maxWidth - knob - inset * 2;
+        return GestureDetector(
+          onHorizontalDragUpdate: (det) {
+            setState(() {
+              _dx = (_dx + det.delta.dx).clamp(0.0, maxDrag);
+            });
+          },
+          onHorizontalDragEnd: (_) {
+            if (_dx >= maxDrag * 0.75) {
+              widget.onComplete();
+            } else {
+              setState(() => _dx = 0);
+            }
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            height: 52,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: widget.color,
+              borderRadius: BorderRadius.circular(30),
+            ),
+            child: Stack(
+              children: [
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  bottom: 0,
+                  child: Center(
+                    child: Text(
+                      widget.label,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: inset + _dx,
+                  top: inset,
+                  child: Container(
+                    width: knob,
+                    height: knob,
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Color(0x33000000),
+                          blurRadius: 6,
+                          offset: Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      LucideIcons.chevronRight,
+                      size: 22,
+                      color: widget.color,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}

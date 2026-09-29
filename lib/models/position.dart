@@ -80,8 +80,9 @@ class PortfolioSummary {
     var win = 0;
     var loss = 0;
     for (final p in positions) {
-      if (p.isClosed) continue;
+      // Realised + floating P&L: squared-off positions stay in the total.
       total += p.pnl;
+      if (p.isClosed) continue;
       if (p.side == PositionSide.long) {
         long++;
       } else {

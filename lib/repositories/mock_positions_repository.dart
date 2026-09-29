@@ -6,7 +6,9 @@ import 'positions_repository.dart';
 /// Seeded demo data matching the reference "Positions" design, so the app is
 /// fully usable until the real paper-trading API is connected.
 class MockPositionsRepository implements PositionsRepository {
-  static const _positions = [
+  MockPositionsRepository() : _positions = List.of(_seed);
+
+  static const _seed = [
     Position(
       symbol: 'NIFTY OCT 22350 PE',
       quantity: -775,
@@ -45,6 +47,8 @@ class MockPositionsRepository implements PositionsRepository {
     ),
   ];
 
+  final List<Position> _positions;
+
   @override
   Future<List<Position>> fetchPositions() async {
     await Future<void>.delayed(const Duration(milliseconds: 450));
@@ -60,6 +64,20 @@ class MockPositionsRepository implements PositionsRepository {
   @override
   Future<void> squareOff(String symbol) async {
     await Future<void>.delayed(const Duration(milliseconds: 600));
-    // no-op: no live trade executed in demo mode
+    final i = _positions.indexWhere((p) => p.symbol == symbol && !p.isClosed);
+    if (i == -1) return;
+    final p = _positions[i];
+    _positions[i] = Position(
+      symbol: p.symbol,
+      quantity: 0,
+      averagePrice: 0,
+      lastTradedPrice: p.lastTradedPrice,
+      pnl: p.pnl,
+      instrumentType: p.instrumentType,
+      product: p.product,
+      segment: p.segment,
+    );
+    final closed = _positions.removeAt(i);
+    _positions.add(closed);
   }
 }

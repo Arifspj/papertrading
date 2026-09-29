@@ -75,7 +75,11 @@ class PositionCard extends StatelessWidget {
                         children: [
                           Text(
                             formatSigned(p.pnl),
-                            style: _pnlStyle.copyWith(color: pnlColor),
+                            style: _pnlStyle.copyWith(
+                              color: pnlColor.withValues(
+                                alpha: closed ? 0.8 : 1,
+                              ),
+                            ),
                           ),
                           const SizedBox(height: 2),
                           Row(
@@ -243,15 +247,19 @@ class _QtyAvgRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final closed = p.isClosed;
     return Row(
       children: [
         const Text('Qty.', style: _labelStyle),
         const SizedBox(width: 6),
-        Text(
-          formatQty(p.quantity.toDouble()),
-          style: _labelStyle.copyWith(
-            fontWeight: FontWeight.w600,
-            color: qtyColor,
+        Transform.translate(
+          offset: closed ? const Offset(0, 1) : Offset.zero,
+          child: Text(
+            formatQty(p.quantity.toDouble()),
+            style: _labelStyle.copyWith(
+              fontWeight: FontWeight.w600,
+              color: qtyColor.withValues(alpha: closed ? 0.6 : 1),
+            ),
           ),
         ),
         const SizedBox(width: 6),
