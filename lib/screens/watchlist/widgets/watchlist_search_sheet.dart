@@ -150,6 +150,7 @@ class _SearchSheetState extends State<_SearchSheet> {
                         final item = _results[i];
                         return _ResultRow(
                           item: item,
+                          added: _repo.isAdded(item.symbol),
                           onAdd: () => _add(item),
                         );
                       },
@@ -164,79 +165,89 @@ class _SearchSheetState extends State<_SearchSheet> {
 
 class _ResultRow extends StatelessWidget {
   final WatchItem item;
+  final bool added;
   final VoidCallback onAdd;
 
-  const _ResultRow({required this.item, required this.onAdd});
+  const _ResultRow({
+    required this.item,
+    required this.added,
+    required this.onAdd,
+  });
 
   @override
   Widget build(BuildContext context) {
     final gain = item.isGain;
     final color =
         gain ? TradePalette.positiveGreen : TradePalette.negativeRed;
-    return InkWell(
-      onTap: onAdd,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    return Opacity(
+      opacity: added ? 0.5 : 1,
+      child: InkWell(
+        onTap: added ? null : onAdd,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    InstrumentTitle(
+                      symbol: item.symbol,
+                      fontSize: 14,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      item.segment,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                        color: TradePalette.slate400,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  InstrumentTitle(
-                    symbol: item.symbol,
-                    fontSize: 14,
+                  Text(
+                    formatAmount(item.lastPrice),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: color,
+                    ),
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    item.segment,
+                    '${gain ? '+' : '-'}${formatAmount(item.change.abs())} '
+                    '(${gain ? '+' : '-'}${formatPlain(item.changePct.abs())}%)',
                     style: const TextStyle(
                       fontSize: 10,
-                      fontWeight: FontWeight.w500,
-                      color: TradePalette.slate400,
+                      color: TradePalette.slate500,
                     ),
                   ),
                 ],
               ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  formatAmount(item.lastPrice),
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: color,
-                  ),
+              const SizedBox(width: 10),
+              Container(
+                width: 26,
+                height: 26,
+                decoration: BoxDecoration(
+                  color: added
+                      ? TradePalette.slate300
+                      : TradePalette.primary,
+                  shape: BoxShape.circle,
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  '${gain ? '+' : '-'}${formatAmount(item.change.abs())} '
-                  '(${gain ? '+' : '-'}${formatPlain(item.changePct.abs())}%)',
-                  style: const TextStyle(
-                    fontSize: 10,
-                    color: TradePalette.slate500,
-                  ),
+                alignment: Alignment.center,
+                child: Icon(
+                  added ? LucideIcons.check : LucideIcons.plus,
+                  size: 14,
+                  color: Colors.white,
                 ),
-              ],
-            ),
-            const SizedBox(width: 10),
-            Container(
-              width: 26,
-              height: 26,
-              decoration: const BoxDecoration(
-                color: TradePalette.primary,
-                shape: BoxShape.circle,
               ),
-              alignment: Alignment.center,
-              child: const Icon(
-                LucideIcons.plus,
-                size: 14,
-                color: Colors.white,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -1,11 +1,17 @@
+import '../core/utils/symbol_formatter.dart';
 import '../models/watchlist.dart';
 
 /// Contract for watchlist quote data.
 abstract class WatchlistRepository {
   Future<List<WatchItem>> fetchWatchlist();
 
-  /// Symbols matching [query] that are not already on the watchlist.
+  /// Catalog symbols matching [query] (already-added ones are included so the
+  /// search sheet can show them as "Added"). Matching runs against the raw
+  /// symbol and the unified [SymbolParts] form, so `01st`, `01` and `24OCT`
+  /// style queries all resolve.
   List<WatchItem> searchSymbols(String query);
+
+  bool isAdded(String symbol);
 
   Future<void> addItem(WatchItem item);
 }
@@ -128,22 +134,40 @@ class MockWatchlistRepository implements WatchlistRepository {
 
   @override
   List<WatchItem> searchSymbols(String query) {
-    final q = query.trim().toLowerCase();
-    final added = _items.map((e) => e.symbol.toLowerCase()).toSet();
+    final q = _compact(query);
+    if (q.isEmpty) return List.of(_catalog);
     return _catalog
-        .where((e) {
-          final symbol = e.symbol.toLowerCase();
-          if (added.contains(symbol)) return false;
-          return q.isEmpty || symbol.contains(q);
-        })
+        .where((e) =>
+            _compact(e.symbol).contains(q) ||
+            _compact(_displayForm(e.symbol)).contains(q))
         .toList();
   }
 
   @override
+  bool isAdded(String symbol) => _items.any((e) => e.symbol == symbol);
+
+  @override
   Future<void> addItem(WatchItem item) async {
     await Future<void>.delayed(const Duration(milliseconds: 150));
-    if (!_items.any((e) => e.symbol == item.symbol)) {
+    if (!isAdded(item.symbol)) {
       _items.add(item);
     }
   }
+
+  /// How the unified renderer displays a symbol, e.g. `SENSEX 01st OCT ...`.
+  static String _displayForm(String symbol) {
+    final p = SymbolParts.parse(symbol);
+    return [
+      p.underlying,
+      if (p.day != null) p.day!,
+      if (p.ordinal != null) p.ordinal!,
+      if (p.month != null) p.month!,
+      if (p.strike != null) p.strike!,
+      if (p.instrumentType != null) p.instrumentType!,
+    ].join(' ');
+  }
+
+  /// Lower-case alphanumeric-only form so spacing/format never blocks a match.
+  static String _compact(String value) =>
+      value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
 }
