@@ -1,11 +1,13 @@
 /// A single quote row in the market watchlist.
+///
+/// Weekly/monthly tagging is derived from [symbol] by `SymbolParts`, so the
+/// same string always renders identically on every page.
 class WatchItem {
   final String symbol;
   final double lastPrice;
   final double change;
   final double changePct;
   final String segment;
-  final bool isWeekly;
 
   const WatchItem({
     required this.symbol,
@@ -13,7 +15,6 @@ class WatchItem {
     required this.change,
     required this.changePct,
     required this.segment,
-    this.isWeekly = false,
   });
 
   bool get isGain => change >= 0;
@@ -25,7 +26,6 @@ class WatchItem {
       change: (json['change'] as num?)?.toDouble() ?? 0,
       changePct: (json['changePct'] as num?)?.toDouble() ?? 0,
       segment: json['segment'] as String? ?? '',
-      isWeekly: json['isWeekly'] as bool? ?? false,
     );
   }
 }

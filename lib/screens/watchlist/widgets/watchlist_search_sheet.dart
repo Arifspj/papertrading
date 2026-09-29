@@ -6,7 +6,7 @@ import '../../../core/theme/cyber_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../models/watchlist.dart';
 import '../../../repositories/watchlist_repository.dart';
-import 'watch_symbol_line.dart';
+import '../../../widgets/instrument_title.dart';
 
 const _sheetBg = Color(0xFFF4F6F8);
 
@@ -183,9 +183,8 @@ class _ResultRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  WatchSymbolLine(
+                  InstrumentTitle(
                     symbol: item.symbol,
-                    isWeekly: item.isWeekly,
                     fontSize: 14,
                   ),
                   const SizedBox(height: 2),
@@ -226,10 +225,8 @@ class _ResultRow extends StatelessWidget {
             Container(
               width: 26,
               height: 26,
-              decoration: BoxDecoration(
-                color: item.isWeekly
-                    ? TradePalette.weekBadge
-                    : TradePalette.primary,
+              decoration: const BoxDecoration(
+                color: TradePalette.primary,
                 shape: BoxShape.circle,
               ),
               alignment: Alignment.center,

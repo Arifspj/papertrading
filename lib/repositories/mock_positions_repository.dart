@@ -19,7 +19,7 @@ class MockPositionsRepository implements PositionsRepository {
       segment: 'NFO',
     ),
     Position(
-      symbol: 'SENSEX 01st W OCT 72900 PE',
+      symbol: 'SENSEX 01st OCT 72900 PE',
       quantity: 1200,
       averagePrice: 98.25,
       lastTradedPrice: 438.15,
@@ -28,7 +28,7 @@ class MockPositionsRepository implements PositionsRepository {
       segment: 'BFO',
     ),
     Position(
-      symbol: 'SENSEX 01st W OCT 72900 CE',
+      symbol: 'SENSEX 01st OCT 72900 CE',
       quantity: 300,
       averagePrice: 18.90,
       lastTradedPrice: 0.05,

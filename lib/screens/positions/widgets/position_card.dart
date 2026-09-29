@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/cyber_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../models/position.dart';
+import '../../../widgets/instrument_title.dart';
 import '../../../widgets/scale_fit.dart';
 
 /// A single position row inside the rounded portfolio panel, matching the
@@ -58,12 +59,21 @@ class PositionCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _SymbolTitle(symbol: p.symbol, dimmed: closed),
+                        InstrumentTitle(
+                          symbol: p.symbol,
+                          fontSize: 16,
+                          fontWeight: closed
+                              ? FontWeight.w400
+                              : FontWeight.w600,
+                          color: closed
+                              ? TradePalette.slate400
+                              : TradePalette.slate900,
+                          letterSpacing: 0.1,
+                        ),
                         if (p.segment.isNotEmpty) ...[
                           const SizedBox(height: 3),
                           Text(p.segment, style: _segmentStyle),
-                        ],
-                      ],
+                        ],                      ],
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -103,88 +113,6 @@ class PositionCard extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Weekly-option aware symbol title: renders "01" + superscript "st" and a
-/// circular "W" badge for symbols like "SENSEX 01st W OCT 72900 PE".
-class _SymbolTitle extends StatelessWidget {
-  final String symbol;
-  final bool dimmed;
-
-  const _SymbolTitle({required this.symbol, required this.dimmed});
-
-  static final RegExp _weekly = RegExp(r'^(.+\d+)(st|nd|rd|th)\s+W\s+(.+)$');
-
-  @override
-  Widget build(BuildContext context) {
-    final base = TextStyle(
-      fontSize: 16,
-      fontWeight: dimmed ? FontWeight.w400 : FontWeight.w600,
-      letterSpacing: 0.1,
-      color: dimmed ? TradePalette.slate400 : TradePalette.slate900,
-      height: 1.2,
-    );
-
-    final m = _weekly.firstMatch(symbol);
-    if (m == null) {
-      return Text(
-        symbol,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: base,
-      );
-    }
-
-    return Text.rich(
-      TextSpan(
-        style: base,
-        children: [
-          TextSpan(text: m.group(1)),
-          WidgetSpan(
-            alignment: PlaceholderAlignment.baseline,
-            baseline: TextBaseline.alphabetic,
-            child: Transform.translate(
-              offset: const Offset(0, -3),
-              child: Text(
-                m.group(2)!,
-                style: const TextStyle(
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w600,
-                  color: TradePalette.slate500,
-                  height: 1.0,
-                ),
-              ),
-            ),
-          ),
-          WidgetSpan(
-            alignment: PlaceholderAlignment.middle,
-            child: Container(
-              width: 14,
-              height: 14,
-              margin: const EdgeInsets.symmetric(horizontal: 2),
-              alignment: Alignment.center,
-              decoration: const BoxDecoration(
-                color: TradePalette.weekBadge,
-                shape: BoxShape.circle,
-              ),
-              child: const Text(
-                'W',
-                style: TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.white,
-                  height: 1,
-                ),
-              ),
-            ),
-          ),
-          TextSpan(text: m.group(3)),
-        ],
-      ),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
     );
   }
 }

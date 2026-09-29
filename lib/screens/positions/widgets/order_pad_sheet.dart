@@ -3,7 +3,9 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/theme/cyber_colors.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../core/utils/symbol_formatter.dart';
 import '../../../models/position.dart';
+import '../../../widgets/instrument_title.dart';
 
 /// Trade direction chosen in the [OrderPadSheet].
 enum OrderPadAction { buy, sell }
@@ -156,6 +158,7 @@ class _OrderPadSheetState extends State<_OrderPadSheet> {
                   ),
                   _MoreToggle(
                     open: _moreOpen,
+                    position: p,
                     onToggle: () => setState(() => _moreOpen = !_moreOpen),
                   ),
                 ],
@@ -172,102 +175,6 @@ class _OrderPadSheetState extends State<_OrderPadSheet> {
         ],
       ),
     );
-  }
-}
-
-/// Weekly-option aware symbol title: "SENSEX 01st W OCT 72900 CE".
-class _SymbolTitle extends StatelessWidget {
-  final SymbolParts parts;
-
-  const _SymbolTitle({required this.parts});
-
-  @override
-  Widget build(BuildContext context) {
-    final base = const TextStyle(
-      fontSize: 16,
-      fontWeight: FontWeight.w700,
-      color: TradePalette.slate900,
-      height: 1.2,
-    );
-    return Text.rich(
-      TextSpan(
-        style: base,
-        children: [
-          TextSpan(text: parts.head),
-          if (parts.suffix != null)
-            WidgetSpan(
-              alignment: PlaceholderAlignment.baseline,
-              baseline: TextBaseline.alphabetic,
-              child: Transform.translate(
-                offset: const Offset(0, -3),
-                child: Text(
-                  parts.suffix!,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: TradePalette.slate500,
-                    height: 1.0,
-                  ),
-                ),
-              ),
-            ),
-          if (parts.weekly)
-            WidgetSpan(
-              alignment: PlaceholderAlignment.middle,
-              child: Container(
-                width: 16,
-                height: 16,
-                margin: const EdgeInsets.symmetric(horizontal: 2),
-                alignment: Alignment.center,
-                decoration: const BoxDecoration(
-                  color: TradePalette.weekBadge,
-                  shape: BoxShape.circle,
-                ),
-                child: const Text(
-                  'W',
-                  style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                    height: 1,
-                  ),
-                ),
-              ),
-            ),
-          TextSpan(text: parts.tail),
-        ],
-      ),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-    );
-  }
-}
-
-class SymbolParts {
-  final String head;
-  final String? suffix;
-  final bool weekly;
-  final String tail;
-
-  const SymbolParts({
-    required this.head,
-    required this.suffix,
-    required this.weekly,
-    required this.tail,
-  });
-
-  factory SymbolParts.parse(String symbol) {
-    final weekly =
-        RegExp(r'^(.+\d+)(st|nd|rd|th)\s+(?:W\s+)?(.*)$').firstMatch(symbol);
-    if (weekly != null) {
-      return SymbolParts(
-        head: weekly.group(1)!,
-        suffix: weekly.group(2),
-        weekly: true,
-        tail: ' ${weekly.group(3)!}',
-      );
-    }
-    return SymbolParts(head: symbol, suffix: null, weekly: false, tail: '');
   }
 }
 
@@ -292,7 +199,12 @@ class _Header extends StatelessWidget {
             ),
           ),
           Flexible(
-            child: _SymbolTitle(parts: SymbolParts.parse(position.symbol)),
+            child: InstrumentTitle(
+              symbol: position.symbol,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.1,
+            ),
           ),
           IconButton(
             onPressed: () {},
@@ -580,8 +492,13 @@ class _InputRow extends StatelessWidget {
 class _MoreToggle extends StatelessWidget {
   final bool open;
   final VoidCallback onToggle;
+  final Position position;
 
-  const _MoreToggle({required this.open, required this.onToggle});
+  const _MoreToggle({
+    required this.open,
+    required this.onToggle,
+    required this.position,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -620,10 +537,13 @@ class _MoreToggle extends StatelessWidget {
               border: Border.all(color: TradePalette.slate200),
             ),
             child: Column(
-              children: const [
-                _MoreRow('Instrument type', 'Options (CE)'),
-                SizedBox(height: 12),
-                _MoreRow('Product', 'MIS'),
+              children: [
+                _MoreRow(
+                  'Instrument type',
+                  SymbolParts.parse(position.symbol).instrumentLabel,
+                ),
+                const SizedBox(height: 12),
+                _MoreRow('Product', position.product),
               ],
             ),
           ),

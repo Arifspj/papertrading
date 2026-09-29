@@ -6,8 +6,8 @@ import '../../core/theme/cyber_colors.dart';
 import '../../core/utils/formatters.dart';
 import '../../models/watchlist.dart';
 import '../../repositories/watchlist_repository.dart';
+import '../../widgets/instrument_title.dart';
 import '../positions/widgets/order_pad_sheet.dart';
-import 'widgets/watch_symbol_line.dart';
 import 'widgets/watchlist_search_sheet.dart';
 
 const _headerBg = Color(0xFFF8FAFF);
@@ -289,10 +289,7 @@ class _WatchRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  WatchSymbolLine(
-                    symbol: item.symbol,
-                    isWeekly: item.isWeekly,
-                  ),
+                  InstrumentTitle(symbol: item.symbol),
                   const SizedBox(height: 2),
                   Text(
                     item.segment,

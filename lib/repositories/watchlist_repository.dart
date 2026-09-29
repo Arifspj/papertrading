@@ -22,20 +22,18 @@ class MockWatchlistRepository implements WatchlistRepository {
       segment: 'NFO',
     ),
     WatchItem(
-      symbol: 'SENSEX 01st W OCT 72900 PE',
+      symbol: 'SENSEX 01st OCT 72900 PE',
       lastPrice: 438.15,
       change: 339.90,
       changePct: 345.95,
       segment: 'BFO',
-      isWeekly: true,
     ),
     WatchItem(
-      symbol: 'SENSEX 01st W OCT 72900 CE',
+      symbol: 'SENSEX 01st OCT 72900 CE',
       lastPrice: 0.05,
       change: -18.85,
       changePct: -99.74,
       segment: 'BFO',
-      isWeekly: true,
     ),
   ];
 
@@ -47,7 +45,6 @@ class MockWatchlistRepository implements WatchlistRepository {
       change: 18.45,
       changePct: 14.88,
       segment: 'NFO',
-      isWeekly: true,
     ),
     WatchItem(
       symbol: 'NIFTY 24OCT 22400 PE',
@@ -55,7 +52,6 @@ class MockWatchlistRepository implements WatchlistRepository {
       change: -12.10,
       changePct: -12.27,
       segment: 'NFO',
-      isWeekly: true,
     ),
     WatchItem(
       symbol: 'BANKNIFTY 23OCT 51200 CE',
@@ -63,7 +59,6 @@ class MockWatchlistRepository implements WatchlistRepository {
       change: 42.60,
       changePct: 14.05,
       segment: 'NFO',
-      isWeekly: true,
     ),
     WatchItem(
       symbol: 'BANKNIFTY 23OCT 50800 PE',
@@ -71,7 +66,6 @@ class MockWatchlistRepository implements WatchlistRepository {
       change: -28.40,
       changePct: -11.90,
       segment: 'NFO',
-      isWeekly: true,
     ),
     WatchItem(
       symbol: 'SENSEX 01st OCT 72900 CE',
@@ -79,7 +73,6 @@ class MockWatchlistRepository implements WatchlistRepository {
       change: 290.20,
       changePct: 287.75,
       segment: 'BFO',
-      isWeekly: true,
     ),
     WatchItem(
       symbol: 'SENSEX 01st OCT 72500 PE',
@@ -87,7 +80,6 @@ class MockWatchlistRepository implements WatchlistRepository {
       change: -45.60,
       changePct: -27.80,
       segment: 'BFO',
-      isWeekly: true,
     ),
     WatchItem(
       symbol: 'FINNIFTY 29th 23900 CE',
@@ -95,17 +87,16 @@ class MockWatchlistRepository implements WatchlistRepository {
       change: 8.75,
       changePct: 10.12,
       segment: 'NFO',
-      isWeekly: true,
     ),
     WatchItem(
-      symbol: 'NIFTY 28NOV FUT',
+      symbol: 'NIFTY NOV FUT',
       lastPrice: 22580.00,
       change: 65.40,
       changePct: 0.29,
       segment: 'NFO',
     ),
     WatchItem(
-      symbol: 'BANKNIFTY 28NOV FUT',
+      symbol: 'BANKNIFTY NOV FUT',
       lastPrice: 51450.00,
       change: -112.30,
       changePct: -0.22,
