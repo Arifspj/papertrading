@@ -3,6 +3,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/api/api_config.dart';
+import '../../core/settings/app_settings_controller.dart';
 import '../../core/theme/app_fonts.dart';
 import '../../core/theme/cyber_colors.dart';
 import '../../core/theme/theme_controller.dart';
@@ -16,6 +17,7 @@ class SettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.cyber;
     final theme = context.watch<ThemeController>();
+    final settings = context.watch<AppSettingsController>();
 
     return SafeArea(
       bottom: false,
@@ -62,6 +64,25 @@ class SettingsScreen extends StatelessWidget {
                   onTap: () => theme.mode = ThemeMode.system,
                 ),
               ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          _SectionTitle(
+            c: c,
+            icon: LucideIcons.activity,
+            title: 'Market Feed',
+          ),
+          const SizedBox(height: 10),
+          _Card(
+            c: c,
+            child: _ToggleRow(
+              c: c,
+              icon: LucideIcons.chartNoAxesColumnIncreasing,
+              label: 'Live ticker',
+              subtitle: 'Scrolling quotes under the app header',
+              value: settings.tickerEnabled,
+              onChanged: (v) => settings.tickerEnabled = v,
             ),
           ),
           const SizedBox(height: 24),
@@ -203,6 +224,83 @@ class _Card extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: child,
+    );
+  }
+}
+
+class _ToggleRow extends StatelessWidget {
+  final CyberColors c;
+  final IconData icon;
+  final String label;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _ToggleRow({
+    required this.c,
+    required this.icon,
+    required this.label,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => onChanged(!value),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        child: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: value ? c.positiveSoft : c.surface,
+                borderRadius: BorderRadius.circular(9),
+                border: Border.all(
+                  color: value ? c.borderActive : c.border,
+                ),
+              ),
+              child: Icon(
+                icon,
+                size: 16,
+                color: value ? c.positive : c.textMuted,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: AppText.micro.copyWith(
+                      color: c.textPrimary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    subtitle,
+                    style: AppText.micro.copyWith(
+                      color: c.textMuted,
+                      fontSize: 10,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Switch(
+              value: value,
+              onChanged: onChanged,
+              activeThumbColor: Colors.white,
+              activeTrackColor: c.positive,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
