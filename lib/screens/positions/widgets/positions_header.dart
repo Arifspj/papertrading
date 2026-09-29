@@ -22,7 +22,7 @@ class PortfolioHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: TradePalette.slate100,
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
       child: Row(
         children: [
           Expanded(
