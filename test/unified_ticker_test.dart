@@ -5,8 +5,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'package:paper_trade/core/settings/app_settings_controller.dart';
-import 'package:paper_trade/main.dart';
+import 'package:paper_trade/core/theme/app_theme.dart';
+import 'package:paper_trade/core/theme/theme_controller.dart';
 import 'package:paper_trade/models/market/live_quote.dart';
+import 'package:paper_trade/repositories/mock_positions_repository.dart';
+import 'package:paper_trade/repositories/positions_repository.dart';
+import 'package:paper_trade/repositories/watchlist_repository.dart';
+import 'package:paper_trade/screens/shell_screen.dart';
 import 'package:paper_trade/services/live/live_market_controller.dart';
 import 'package:paper_trade/services/live/market_stream.dart';
 import 'package:paper_trade/widgets/unified_ticker.dart';
@@ -43,16 +48,30 @@ class _FakeStream implements MarketStream {
       ),
     );
   }
+
+  /// Simulates a poll cycle that came back with nothing at all.
+  void pushOutage() {
+    if (_controller.isClosed) return;
+    _controller.add(
+      const StreamEvent(
+        status: StreamStatus.degraded,
+        message: 'all feeds failed',
+        transport: 'fake',
+      ),
+    );
+  }
 }
 
-LiveQuote _quote(String symbol, double ltp, double pct) => LiveQuote(
+LiveQuote _quote(String symbol, double ltp, double pct,
+        {String source = kTickerQuoteSource}) =>
+    LiveQuote(
       symbol: symbol,
       instrument: symbol,
       ltp: ltp,
       change: 0,
       changePct: pct,
       at: DateTime(2026, 11),
-      source: 'poll:ticker',
+      source: source,
     );
 
 void main() {
@@ -73,7 +92,7 @@ void main() {
 
   tearDown(() => controller.dispose());
 
-  Widget host({AppSettingsController? settings, List<Widget> tabs = const []}) {
+  Widget host({AppSettingsController? settings}) {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider<LiveMarketController>.value(value: controller),
@@ -84,13 +103,17 @@ void main() {
       child: MaterialApp(
         home: Builder(
           builder: (context) {
-            final on = context.select<AppSettingsController, bool>(
+            // Mirrors ShellScreen: the strip only appears with real data.
+            final enabled = context.select<AppSettingsController, bool>(
               (s) => s.tickerEnabled,
             );
+            final hasData =
+                context.select<LiveMarketController, bool>((c) => c.hasTickerData);
             return Column(
               children: [
-                if (on) const SafeArea(child: UnifiedTicker()),
-                Expanded(child: tabs.isEmpty ? const SizedBox.shrink() : tabs.first),
+                if (enabled && hasData)
+                  const SafeArea(child: UnifiedTicker()),
+                const Expanded(child: SizedBox.shrink()),
               ],
             );
           },
@@ -98,6 +121,75 @@ void main() {
       ),
     );
   }
+
+  /// Broadcast events are delivered in a microtask, so give the controller a
+  /// frame to notify and the tree a frame to rebuild before asserting.
+  Future<void> deliver(WidgetTester tester) async {
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+  }
+
+  group('ticker data gating', () {
+    test('header quotes are limited to the shared ticker feed', () async {
+      stream.push([
+        _quote('NIFTY', 22716.20, -0.28),
+        _quote('NIFTY 22700 CE', 120.5, 1.7, source: 'poll:analysis'),
+      ]);
+      await pumpEventQueue();
+
+      expect(controller.tickerQuotes.map((q) => q.symbol), ['NIFTY']);
+      expect(controller.hasTickerData, isTrue);
+    });
+
+    test('clearing the ticker feed leaves other quotes warm', () async {
+      stream.push([
+        _quote('NIFTY', 22716.20, -0.28),
+        _quote('NIFTY 22700 CE', 120.5, 1.7, source: 'poll:analysis'),
+      ]);
+      await pumpEventQueue();
+
+      controller.clearTickerQuotes();
+
+      expect(controller.hasTickerData, isFalse);
+      expect(controller.quoteFor('NIFTY'), isNull);
+      expect(controller.quoteFor('NIFTY 22700 CE'), isNotNull);
+    });
+
+    test('all-zero ticker prices never count as data', () async {
+      stream.push([_quote('NIFTY', 0, 0)]);
+      await pumpEventQueue();
+
+      expect(controller.hasTickerData, isFalse);
+    });
+
+    test('a poll that returns nothing drops the stale ticker prices', () async {
+      stream.push([
+        _quote('NIFTY', 22716.20, -0.28),
+        _quote('NIFTY 22700 CE', 120.5, 1.7, source: 'poll:analysis'),
+      ]);
+      await pumpEventQueue();
+      expect(controller.hasTickerData, isTrue);
+
+      stream.pushOutage();
+      await pumpEventQueue();
+
+      expect(controller.hasTickerData, isFalse);
+      // Option prices are untouched, they are not the header's business.
+      expect(controller.quoteFor('NIFTY 22700 CE'), isNotNull);
+    });
+
+    test('the ticker comes back after an outage', () async {
+      stream.push([_quote('NIFTY', 22716.20, -0.28)]);
+      await pumpEventQueue();
+      stream.pushOutage();
+      await pumpEventQueue();
+      expect(controller.hasTickerData, isFalse);
+
+      stream.push([_quote('NIFTY', 22800.00, 0.37)]);
+      await pumpEventQueue();
+      expect(controller.hasTickerData, isTrue);
+    });
+  });
 
   group('UnifiedTicker rendering', () {
     testWidgets('renders symbol, price and change from the feed', (tester) async {
@@ -171,12 +263,54 @@ void main() {
       expect(find.text('101.00'), findsWidgets);
     });
 
-    testWidgets('stays idle without quotes so the app can settle',
+    testWidgets('renders nothing while there is no data', (tester) async {
+      await tester.pumpWidget(host());
+      // No placeholder: the strip is removed from the tree entirely.
+      await tester.pumpAndSettle();
+      expect(find.byType(UnifiedTicker), findsNothing);
+      expect(find.byType(ListView), findsNothing);
+    });
+
+    testWidgets('appears as soon as a quote arrives', (tester) async {
+      await tester.pumpWidget(host());
+      await tester.pumpAndSettle();
+      expect(find.byType(UnifiedTicker), findsNothing);
+
+      stream.push([_quote('NIFTY', 22716.20, -0.28)]);
+      await deliver(tester);
+      expect(find.byType(UnifiedTicker), findsOneWidget);
+      expect(find.text('NIFTY'), findsWidgets);
+
+      // And disappears again when the feed goes quiet.
+      controller.clearTickerQuotes();
+      await deliver(tester);
+      expect(find.byType(UnifiedTicker), findsNothing);
+      expect(find.text('NIFTY'), findsNothing);
+    });
+
+    testWidgets('ignores a symbol whose price has not arrived yet',
         (tester) async {
       await tester.pumpWidget(host());
-      // A forever-repeating animation would hang this.
-      await tester.pumpAndSettle();
-      expect(find.text('Market feed idle'), findsOneWidget);
+      stream.push([
+        _quote('TCS', 0, 0),
+        _quote('SENSEX', 72529.07, -0.33),
+      ]);
+      await tester.pump();
+
+      expect(find.text('TCS'), findsNothing);
+      expect(find.text('SENSEX'), findsWidgets);
+    });
+
+    testWidgets('an all-zero batch is treated as no data', (tester) async {
+      await tester.pumpWidget(host());
+      stream.push([
+        _quote('TCS', 0, 0),
+        _quote('INFY', 0, 0),
+      ]);
+      await tester.pump();
+
+      expect(controller.hasTickerData, isFalse);
+      expect(find.byType(UnifiedTicker), findsNothing);
     });
   });
 
@@ -280,34 +414,73 @@ void main() {
     });
   });
 
-  group('app integration', () {
-    testWidgets('ticker renders on boot', (tester) async {
-      await tester.pumpWidget(const CyberPulseApp());
-      // No network in tests, so the strip stays on its idle row and settles.
+  group('shell integration', () {
+    Widget shell(AppSettingsController settings) {
+      return MultiProvider(
+        providers: [
+          Provider<PositionsRepository>(create: (_) => MockPositionsRepository()),
+          Provider<WatchlistRepository>(create: (_) => MockWatchlistRepository()),
+          ChangeNotifierProvider<ThemeController>(create: (_) => ThemeController()),
+          ChangeNotifierProvider<LiveMarketController>.value(value: controller),
+          ChangeNotifierProvider<AppSettingsController>.value(value: settings),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light,
+          home: const ShellScreen(),
+        ),
+      );
+    }
+
+    testWidgets('header has no ticker while the feed is silent', (tester) async {
+      await tester.pumpWidget(shell(AppSettingsController()));
       await tester.pumpAndSettle();
-      expect(find.byType(UnifiedTicker), findsOneWidget);
+
+      expect(controller.hasTickerData, isFalse);
+      expect(find.byType(UnifiedTicker), findsNothing);
     });
 
-    testWidgets('settings exposes a live ticker switch', (tester) async {
-      await tester.pumpWidget(const CyberPulseApp());
+    testWidgets('header shows the ticker once quotes arrive', (tester) async {
+      await tester.pumpWidget(shell(AppSettingsController()));
       await tester.pumpAndSettle();
+      expect(find.byType(UnifiedTicker), findsNothing);
+
+      stream.push([_quote('NIFTY', 22716.20, -0.28)]);
+      await deliver(tester);
+      expect(find.byType(UnifiedTicker), findsOneWidget);
+      expect(find.text('NIFTY'), findsWidgets);
+
+      // Drop the strip again so the test ends on a settled tree.
+      controller.clearTickerQuotes();
+      await deliver(tester);
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('header removes the ticker again when the feed goes quiet',
+        (tester) async {
+      await tester.pumpWidget(shell(AppSettingsController()));
+      stream.push([_quote('NIFTY', 22716.20, -0.28)]);
+      await deliver(tester);
+      expect(find.byType(UnifiedTicker), findsOneWidget);
+
+      controller.clearTickerQuotes();
+      await deliver(tester);
+      expect(find.byType(UnifiedTicker), findsNothing);
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('settings switch hides the ticker even with data',
+        (tester) async {
+      final settings = AppSettingsController();
+      await tester.pumpWidget(shell(settings));
+      stream.push([_quote('NIFTY', 22716.20, -0.28)]);
+      await deliver(tester);
+      expect(find.byType(UnifiedTicker), findsOneWidget);
 
       await tester.tap(find.text('Settings'));
       await tester.pumpAndSettle();
-
       expect(find.text('MARKET FEED'), findsOneWidget);
       expect(find.text('Live ticker'), findsOneWidget);
       expect(find.byType(Switch), findsOneWidget);
-    });
-
-    testWidgets('switch hides and shows the ticker', (tester) async {
-      await tester.pumpWidget(const CyberPulseApp());
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('Settings'));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(UnifiedTicker), findsOneWidget);
 
       await tester.tap(find.byType(Switch));
       await tester.pumpAndSettle();
@@ -319,3 +492,5 @@ void main() {
     });
   });
 }
+
+

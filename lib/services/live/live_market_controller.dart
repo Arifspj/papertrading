@@ -56,10 +56,42 @@ class LiveMarketController extends ChangeNotifier {
   bool get isLive => _status == StreamStatus.live;
   String get transportName => _active?.transportName ?? 'none';
 
+  /// Quotes suitable for the header ticker: real prices from the ticker feed
+  /// only, one entry per symbol, sorted for a stable marquee.
+  ///
+  /// Cash rows the watchlist seeds with a placeholder price are dropped, so
+  /// the strip never shows a stale zero. A quote only counts once a price has
+  /// actually arrived. Option LTP and chain prices are deliberately excluded
+  /// so they cannot leak into the header.
+  List<LiveQuote> get tickerQuotes {
+    final seen = <String>{};
+    final out = <LiveQuote>[];
+    for (final q in _quotes.values) {
+      if (q.source != kTickerQuoteSource) continue;
+      if (q.ltp == 0 || !seen.add(q.symbol)) continue;
+      out.add(q);
+    }
+    out.sort((a, b) => a.symbol.compareTo(b.symbol));
+    return out;
+  }
+
+  /// Whether there is anything worth showing in the header ticker. The header
+  /// hides its ticker strip entirely while this is false.
+  bool get hasTickerData => tickerQuotes.isNotEmpty;
+
+  /// Drop the cached ticker quotes and tell listeners, so a feed outage
+  /// collapses the header strip instead of leaving stale prices on screen.
+  ///
+  /// Only the ticker feed is cleared; option LTP and chain quotes stay warm.
+  void clearTickerQuotes() {
+    if (_dropTickerQuotes()) notifyListeners();
+  }
+
   /// A quote for a canonical symbol, or null while nothing has arrived yet.
   LiveQuote? quoteFor(String symbol) => _quotes[symbol];
 
-  Future<void> start() async {    await _teardown();
+  Future<void> start() async {
+    await _teardown();
     _quotes.clear();
     _wsDelivered = false;
     if (_ws.isSupported) {
@@ -91,15 +123,30 @@ class LiveMarketController extends ChangeNotifier {
     }
     _status = event.status;
     _message = event.message;
-    var changed = false;
     for (final q in event.quotes) {
-      if (_quotes[q.symbol] != q) {
-        _quotes[q.symbol] = q;
-        changed = true;
-      }
+      _quotes[q.symbol] = q;
     }
-    if (changed || event.status != _status) notifyListeners();
+    // A cycle that came back with nothing means the feed is gone, not that the
+    // last prices are still good. Drop the ticker rows so the header strip
+    // disappears, and let it come back on the next successful poll.
+    if (event.quotes.isEmpty &&
+        event.status == StreamStatus.degraded) {
+      _dropTickerQuotes();
+    }
     notifyListeners();
+  }
+
+  /// Removes the ticker rows and reports whether anything was actually dropped.
+  bool _dropTickerQuotes() {
+    final stale = _quotes.values
+        .where((q) => q.source == kTickerQuoteSource)
+        .map((q) => q.symbol)
+        .toSet();
+    if (stale.isEmpty) return false;
+    for (final symbol in stale) {
+      _quotes.remove(symbol);
+    }
+    return true;
   }
 
   /// Pull one cycle from the active polling transport (no-op on WebSocket).

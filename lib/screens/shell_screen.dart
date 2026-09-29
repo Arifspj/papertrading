@@ -8,6 +8,7 @@ import '../screens/orders/orders_screen.dart';
 import '../screens/positions/positions_screen.dart';
 import '../screens/settings/settings_screen.dart';
 import '../screens/watchlist/watchlist_screen.dart';
+import '../services/live/live_market_controller.dart';
 import '../widgets/cyber_nav_bar.dart';
 import '../widgets/unified_ticker.dart';
 
@@ -33,8 +34,13 @@ class _ShellScreenState extends State<ShellScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final showTicker =
+    // Three conditions for the strip: the user wants it, the feed has real
+    // prices, and only then does it take over the top safe-area inset.
+    final enabled =
         context.select<AppSettingsController, bool>((s) => s.tickerEnabled);
+    final hasData =
+        context.select<LiveMarketController, bool>((c) => c.hasTickerData);
+    final showTicker = enabled && hasData;
 
     return Scaffold(
       backgroundColor: TradePalette.slate100,

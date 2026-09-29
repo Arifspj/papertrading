@@ -167,7 +167,7 @@ class HnicallsClient {
             change: ltp - asDoubleOr(row['prev_close'], ltp),
             changePct: asDoubleOr(row['pct_change'], 0),
             at: DateTime.tryParse(asString(json['updated'])) ?? now,
-            source: 'poll:ticker',
+            source: kTickerQuoteSource,
           ),
         );
       }

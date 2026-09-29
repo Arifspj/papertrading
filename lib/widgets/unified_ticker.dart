@@ -21,8 +21,8 @@ class UnifiedTicker extends StatefulWidget {
   /// Scroll speed in logical pixels per second.
   final double speed;
 
-  /// Extra quotes to append, e.g. a static header badge.
-  final List<TickerChip> leading;
+  /// Extra quotes to prepend, e.g. a static header badge.
+  final List<LiveQuote> leading;
 
   const UnifiedTicker({super.key, this.speed = 42, this.leading = const []});
 
@@ -89,8 +89,12 @@ class _UnifiedTickerState extends State<UnifiedTicker>
   @override
   Widget build(BuildContext context) {
     final live = context.watch<LiveMarketController>();
-    final quotes = _tickerQuotes(live.quotes.values);
+    final quotes = live.tickerQuotes;
     final chips = [...widget.leading, ...quotes];
+
+    // No data => no strip at all. The header collapses to nothing rather than
+    // showing an empty placeholder, and comes back on the next quote.
+    if (chips.isEmpty) return const SizedBox.shrink();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _syncAnimation();
@@ -98,54 +102,27 @@ class _UnifiedTickerState extends State<UnifiedTicker>
 
     return Container(
       height: 30,
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: Colors.white,
-        border: const Border(
+        border: Border(
           bottom: BorderSide(color: TradePalette.slate200),
         ),
       ),
-      child: quotes.isEmpty
-          ? Row(
-              children: [
-                const SizedBox(width: 16),
-                _statusDot(live.isLive),
-                const SizedBox(width: 8),
-                Text(
-                  live.isLive ? 'Connecting to market feed…' : 'Market feed idle',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: TradePalette.slate500,
-                  ),
-                ),
-              ],
-            )
-          : ListView(
-              controller: _scroll,
-              scrollDirection: Axis.horizontal,
-              physics: const NeverScrollableScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              children: [
-                // Two identical halves make the wrap-around seamless.
-                for (var pass = 0; pass < 2; pass++)
-                  for (final chip in chips) _chip(chip),
-              ],
-            ),
-    );
-  }
-
-  Widget _statusDot(bool isLive) {
-    return Container(
-      width: 6,
-      height: 6,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: isLive ? TradePalette.positiveGreen : TradePalette.slate400,
+      child: ListView(
+        controller: _scroll,
+        scrollDirection: Axis.horizontal,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        children: [
+          // Two identical halves make the wrap-around seamless.
+          for (var pass = 0; pass < 2; pass++)
+            for (final chip in chips) _chip(chip),
+        ],
       ),
     );
   }
 
-  Widget _chip(TickerChip q) {
+  Widget _chip(LiveQuote q) {
     final up = q.changePct >= 0;
     final color = up ? TradePalette.positiveGreen : TradePalette.negativeRed;
     return Padding(
@@ -154,7 +131,7 @@ class _UnifiedTickerState extends State<UnifiedTicker>
         children: [
           Text(
             q.symbol,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w700,
               color: TradePalette.slate900,
@@ -163,7 +140,7 @@ class _UnifiedTickerState extends State<UnifiedTicker>
           const SizedBox(width: 6),
           Text(
             formatPlain(q.ltp),
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w500,
               color: TradePalette.slate600,
@@ -182,26 +159,4 @@ class _UnifiedTickerState extends State<UnifiedTicker>
       ),
     );
   }
-}
-
-/// One entry in the marquee.
-class TickerChip {
-  const TickerChip(this.symbol, this.ltp, this.changePct);
-
-  final String symbol;
-  final double ltp;
-  final double changePct;
-}
-
-/// Index/mover quotes first, then the rest alphabetically. Cash instruments
-/// with no price yet are dropped so the strip never shows a stale zero.
-List<TickerChip> _tickerQuotes(Iterable<LiveQuote> quotes) {
-  final seen = <String>{};
-  final out = <TickerChip>[];
-  for (final q in quotes) {
-    if (q.ltp == 0 || !seen.add(q.symbol)) continue;
-    out.add(TickerChip(q.symbol, q.ltp, q.changePct));
-  }
-  out.sort((a, b) => a.symbol.compareTo(b.symbol));
-  return out;
 }

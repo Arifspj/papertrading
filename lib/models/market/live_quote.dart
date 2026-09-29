@@ -1,3 +1,7 @@
+/// Identifies quotes that came from the shared `ticker_app` feed, which is the
+/// only source the header marquee is allowed to render.
+const kTickerQuoteSource = 'poll:ticker';
+
 /// One normalised quote pushed by the live stream.
 class LiveQuote {
   /// Canonical app symbol, e.g. `NIFTY 22700 CE` or `NIFTY`.
