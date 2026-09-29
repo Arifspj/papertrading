@@ -6,7 +6,8 @@ void main() {
     test('weekly option: day present -> weekly kind', () {
       final p = SymbolParts.parse('SENSEX 01st OCT 72900 PE');
       expect(p.underlying, 'SENSEX');
-      expect(p.day, '01st');
+      expect(p.day, '01');
+      expect(p.ordinal, 'st');
       expect(p.month, 'OCT');
       expect(p.strike, '72900');
       expect(p.instrumentType, 'PE');
@@ -28,6 +29,7 @@ void main() {
     test('day+month token (24OCT) splits into day and month', () {
       final p = SymbolParts.parse('NIFTY 24OCT 22500 CE');
       expect(p.day, '24');
+      expect(p.ordinal, isNull);
       expect(p.month, 'OCT');
       expect(p.isWeekly, isTrue);
     });
@@ -35,6 +37,8 @@ void main() {
     test('legacy standalone W token is dropped', () {
       final p = SymbolParts.parse('SENSEX 01st W OCT 72900 PE');
       expect(p.underlying, 'SENSEX');
+      expect(p.day, '01');
+      expect(p.ordinal, 'st');
       expect(p.month, 'OCT');
       expect(p.isWeekly, isTrue);
     });

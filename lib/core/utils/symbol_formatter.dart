@@ -14,8 +14,11 @@ class SymbolParts {
   final String raw;
   final String underlying;
 
-  /// Day of expiry, e.g. `01st` or `24`. Null for monthly contracts.
+  /// Day of expiry, e.g. `01` or `24`. Null for monthly contracts.
   final String? day;
+
+  /// Ordinal suffix of the day, e.g. `st`, `th`. Rendered as a superscript.
+  final String? ordinal;
 
   /// Month of expiry, e.g. `OCT`.
   final String? month;
@@ -32,6 +35,7 @@ class SymbolParts {
     required this.raw,
     required this.underlying,
     this.day,
+    this.ordinal,
     this.month,
     this.strike,
     this.instrumentType,
@@ -70,6 +74,7 @@ class SymbolParts {
     }
 
     String? day;
+    String? ordinal;
     String? month;
     for (final t in tokens.toList()) {
       final dayMonth = _dayMonth.firstMatch(t);
@@ -81,7 +86,8 @@ class SymbolParts {
       }
       final d = _day.firstMatch(t);
       if (d != null && d.group(1) != strike) {
-        day ??= t;
+        day ??= d.group(1);
+        ordinal ??= d.group(2);
         tokens.remove(t);
         continue;
       }
@@ -103,6 +109,7 @@ class SymbolParts {
       raw: symbol,
       underlying: tokens.join(' '),
       day: day,
+      ordinal: ordinal,
       month: month,
       strike: strike,
       instrumentType: instrument,

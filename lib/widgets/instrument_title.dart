@@ -6,7 +6,7 @@ import '../core/utils/symbol_formatter.dart';
 /// The single symbol renderer used on every page (position card, watchlist
 /// row, search result, order pad).
 ///
-///   * Weekly  -> `SENSEX 01ˢᵗ [W] OCT 72900 PE` (day raised, blue W badge)
+///   * Weekly  -> `SENSEX 01ˢᵗ [W] OCT 72900 PE` (only the ordinal is raised)
 ///   * Monthly -> `NIFTY OCT 22350 PE`             (month, no badge)
 class InstrumentTitle extends StatelessWidget {
   final String symbol;
@@ -40,17 +40,17 @@ class InstrumentTitle extends StatelessWidget {
       TextSpan(
         style: base,
         children: [
-          TextSpan(text: p.underlying),
-          if (p.day != null)
+          TextSpan(text: p.day != null ? '${p.underlying} ${p.day}' : p.underlying),
+          if (p.ordinal != null)
             WidgetSpan(
               alignment: PlaceholderAlignment.baseline,
               baseline: TextBaseline.alphabetic,
               child: Transform.translate(
-                offset: const Offset(0, -2),
+                offset: Offset(0, -fontSize * 0.2),
                 child: Text(
-                  p.day!,
+                  p.ordinal!,
                   style: TextStyle(
-                    fontSize: fontSize * 0.67,
+                    fontSize: fontSize * 0.62,
                     fontWeight: FontWeight.w600,
                     color: TradePalette.slate500,
                     height: 1.0,
