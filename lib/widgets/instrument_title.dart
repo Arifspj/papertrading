@@ -46,7 +46,7 @@ class InstrumentTitle extends StatelessWidget {
               alignment: PlaceholderAlignment.baseline,
               baseline: TextBaseline.alphabetic,
               child: Transform.translate(
-                offset: Offset(0, -fontSize * 0.2),
+                offset: Offset(0, -(fontSize * 0.2 + 2)),
                 child: Text(
                   p.ordinal!,
                   style: TextStyle(
