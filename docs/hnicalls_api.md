@@ -35,7 +35,7 @@ Both are overridable: `HNICALLS_API_BASE`, `HNICALLS_PUBLIC_BASE`, `HNICALLS_WS_
 | `GET /observation/` | 200 ✅ | Free-text feed, list of `{observation}` |
 | `GET /public/api/ticker_app` | 200 ✅ | Index quotes + movers |
 | `GET /option-chain/{instrument}` | Intermittent | Works at times, 500s in bursts |
-| `GET /ltp/{instrument}/{strike}/{type}` | 200 ⚠️ | **Works, but PE prices and OI are wrong** |
+| `GET /ltp/{instrument}/{strike}/{type}` | 200 ✅ | Per-contract LTP; the reliable fallback when the chain is down |
 | `wss://api.hnicalls.com/ws/v1` | 404 ❌ | No WS server deployed |
 
 ## The `/ltp` route: use with care
@@ -59,30 +59,41 @@ The payload is richer than the chain:
 Note the resolved `expiry` is **per-underlying**: NIFTY returned `2026-09-29`
 while SENSEX returned `2026-10-01` for the same call shape.
 
-### But the numbers are not trustworthy
+### But the numbers are trustworthy — check them the right way
 
-Measured across a strike ladder with spot at 22716.2:
+Measured across a strike ladder. The check that matters is the **intrinsic
+value floor**, and its direction depends on the option type:
 
-| Strike | CE ltp | CE oi | PE ltp | PE oi |
-|---|---|---|---|---|
-| 22000 | 717.65 | 224,185 | 0.05 | 11,602,630 |
-| 22500 | 215.75 | 1,522,820 | 0.05 | 9,579,050 |
-| 22700 | 16.25 | 16,266,510 | 0.05 | 20,374,835 |
-| 23000 | 0.05 | 10,555,415 | 283.3 | 3,197,010 |
-| 23500 | 0.05 | 12,625,990 | 784 | 2,391,935 |
+- **CE** with strike `K` is in the money when `K < spot`; floor is `spot − K`.
+- **PE** with strike `K` is in the money when `K > spot`; floor is `K − spot`.
+  A PE whose strike is *below* spot is out of the money and can legitimately
+  quote at a few paise.
 
-- **CE ladder is sound** — it decays monotonically, which is what an option
-  ladder must do.
-- **PE ladder is broken.** A 22700 PE with spot at 22716 is in the money by
-  ~16, so it cannot be worth 0.05. And a 23000 PE is ~284 points out of the
-  money, so it cannot be worth 283.3. Both ends are impossible.
-- **`oi` is meaningless.** Real NIFTY open interest peaks at the money and falls
-  off hard at the wings; here 22000 CE carries 224k while 22000 PE carries
-  11.6 million, and the ATM carries 16 million. These are not real OI numbers.
+NIFTY (spot 22716.2) and SENSEX (spot ≈ 72790) both satisfy their floors:
 
-Treating a 0.05 price as real is a much worse failure than showing nothing: on a
-16-point in-the-money position it reads as a 99% loss. The option chain remains
-the only source trusted for option prices.
+| Strike | ltp | ITM floor | |
+|---|---|---|---|
+| NIFTY 22350 PE | 0.05 | 0 (OTM by 366) | OK |
+| NIFTY 22350 CE | 365.55 | 366.2 | OK |
+| NIFTY 22750 PE | 33.75 | 33.8 | OK |
+| NIFTY 23000 PE | 283.3 | 283.8 | OK |
+| SENSEX 72900 PE | 390.0 | ~110 | OK |
+| SENSEX 74000 PE | 1230.35 | ~1210 | OK |
+
+**Do traps that make this route look broken when it is not:**
+
+1. **Reading a PE's moneyness backwards.** With spot at 22716, a 22700 **PE** is
+   *out* of the money, not in. Its `0.05` is a normal deep-OTM premium on expiry
+   day, not a broken value.
+2. **Taking spot from `/indices`.** That endpoint self-reports
+   `"source":"fallback_api"`, so its SENSEX spot (72529) is stale. It makes
+   74000 PE look like it is 241 points below intrinsic. Deriving spot from
+   put-call parity across the ladder gives ≈ 72790 and the whole ladder checks
+   out.
+
+`oi` is the one field to ignore — real NIFTY open interest peaks at the money
+and thins at the wings, whereas this route reports 224k at 22000 CE and 11.6M at
+22000 PE. Nothing in the app reads it.
 
 ## Why the chain also 500s
 
@@ -98,9 +109,11 @@ session is over, Upstox may stop serving a chain for the expired contract. This
 is the most likely reason, but it is not proven: the 200 response shows the
 route can still serve the just-closed expiry.
 
-The chain is retried once per cycle to ride out the blips. During a full outage
-the watchlist and positions still show index LTP, option rows fall back to their
-stored price, and the status chip reads `DEGRADED`.
+The chain is retried once per cycle to ride out the blips. When it stays down,
+`HnicallsPollingStream` falls back to `/ltp/{instrument}/{strike}/{type}` per
+tracked contract, so option rows keep showing live prices either way. During a
+full outage of both the watchlist and positions fall back to their stored price
+and the status chip reads `DEGRADED`.
 
 ## Gotchas
 
