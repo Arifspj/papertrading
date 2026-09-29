@@ -31,40 +31,76 @@ Both are overridable: `HNICALLS_API_BASE`, `HNICALLS_PUBLIC_BASE`, `HNICALLS_WS_
 | Endpoint | Status | Notes |
 |---|---|---|
 | `GET /analysis/{instrument}` | 200 ✅ | ATM snapshot, PCR, max pain, IV skew |
+| `GET /indices` | 200 ✅ | Index LTP/prev-close, but only NIFTY + SENSEX, and self-reports `"source":"fallback_api"` |
 | `GET /observation/` | 200 ✅ | Free-text feed, list of `{observation}` |
 | `GET /public/api/ticker_app` | 200 ✅ | Index quotes + movers |
-| `GET /option-chain/{instrument}` | 200 ✅ (market hours) | Every strike's CE/PE LTP in one call |
-| `GET /ltp/{instrument}/{strike}/{type}` | 200 ✅ (market hours) | Single contract LTP, used as fallback |
+| `GET /option-chain/{instrument}` | Intermittent | Works at times, 500s in bursts |
+| `GET /ltp/{instrument}/{strike}/{type}` | 500 ❌ | **Unusable — hard upstream bug, see below** |
 | `wss://api.hnicalls.com/ws/v1` | 404 ❌ | No WS server deployed |
 
-The option routes work **while the market is open** and fail after hours with
-`500 {"error": "local variable 'expiry' referenced before assignment"}` — an
-upstream bug in how HNICALLS resolves the expiry, not a client mistake. When
-that happens the app keeps the last price it had and the row falls back to its
-stored value; nothing crashes and the feed reports `degraded`.
+## The `/ltp` route is broken upstream, and no parameter fixes it
 
-Option LTP reaches the UI like this: the watchlist and positions screens call
-`LiveMarketController.trackSymbols()` with the rows they are showing. One
-`/option-chain/{underlying}` call then resolves every tracked strike of that
-underlying, and anything the chain misses falls back to `/ltp/...`. Indices on
-those screens come from `ticker_app` and need no tracking.
+`GET /api/ltp/nifty/22700/ce` returns:
 
-Both option routes come back and go: the same URL returns 200 for a stretch and
-then 500 for minutes at a time, while `ticker_app` keeps working the whole time.
-The chain is therefore retried once per cycle, which recovers a good share of
-the blips. During a full outage the watchlist and positions still show index
-LTP, option rows fall back to their stored price, and the status chip reads
-`DEGRADED` — so "no live option LTP" is a real upstream outage, not a wiring
-bug.
+```json
+{"error":"local variable 'expiry' referenced before assignment"}
+```
+
+That string is a Python `UnboundLocalError` — the handler reads `expiry` in a
+code path that never assigns it. Every plausible workaround was probed and all
+of them return the byte-identical error, so the variable simply has no
+assignment to reach:
+
+| Attempted | Result |
+|---|---|
+| `/ltp/nifty/22700/ce` | 500, same error |
+| `/ltp/nifty/22700/ce?expiry=01OCT` | 500, same error |
+| `/ltp/nifty/22700/ce?expiry=01-OCT-2026` | 500, same error |
+| `/ltp/nifty/22700/ce?type=monthly` | 500, same error |
+| `/ltp/nifty/monthly/22700/ce` | 500, same error |
+| `/ltp/NIFTY/22700/CE` | 500, same error |
+
+This needs a fix on HNICALLS' server, not in the client. Until then the
+per-contract fallback in `HnicallsPollingStream` has nothing to fall back to,
+and the option chain is the only route left for option prices.
+
+## Why the chain also 500s
+
+`/option-chain/{instrument}` fails with
+`{"error":"Failed to fetch option chain from Upstox","message":"Could not retrieve option chain data"}`.
+
+It is genuinely intermittent: the same URL returned 200 with 144 strikes during
+this audit and then failed 6 times in a row minutes later, while `ticker_app`
+stayed healthy the whole time. One contributing factor is that
+`/analysis/{instrument}` currently reports `expiryDate: "2026-09-29"` — today's
+date, which is a Tuesday and therefore NIFTY's weekly expiry day. Once that
+session is over, Upstox may stop serving a chain for the expired contract. This
+is the most likely reason, but it is not proven: the 200 response shows the
+route can still serve the just-closed expiry.
+
+The chain is retried once per cycle to ride out the blips. During a full outage
+the watchlist and positions still show index LTP, option rows fall back to their
+stored price, and the status chip reads `DEGRADED`.
 
 ## Gotchas
 
-- **Case matters.** `/analysis/NIFTY` works; `/option-chain/NIFTY` fails while
-  `/option-chain/nifty` is the documented route.
-- **No date-based expiry selection.** The only selector is `?type=monthly`.
-  Omit it for the nearest weekly expiry.
-- **Monthly LTP lives on a different path**, not a query param:
-  `/ltp/{instrument}/monthly/{strike}/{CE|PE}`.
+- **Case does not matter.** An earlier note in this file claimed
+  `/option-chain/NIFTY` failed while `/option-chain/nifty` worked. That was
+  wrong — it was an assumption, not a measurement. Probed both: `/analysis/nifty`
+  and `/analysis/NIFTY` return byte-identical JSON, and `/option-chain/nifty` and
+  `/option-chain/NIFTY` return byte-identical errors. The client sends lowercase
+  because that matches the documented route, not because upper-case breaks.
+- **No date-based expiry selection.** The only selector is `?type=monthly`, and
+  omitting it gives the nearest weekly expiry. No route accepts an explicit
+  expiry date, which is what makes the `/ltp` breakage unrecoverable client-side.
+- **Monthly LTP was documented as a separate path**, `/ltp/{instrument}/monthly/
+  {strike}/{CE|PE}`. That path also returns the `expiry` error, so the claim is
+  untested and should be treated as unverified.
+- **`/future` and `/btst` are not price feeds.** They look promising because they
+  carry `expiryDate`, `strikePrice` and `optionType`, but they are trade-call
+  cards: `price` is a string with a trailing comma (`"22875,"`) for futures and
+  literally `"0"` for options, alongside targets and stop-losses. Do not wire
+  them up as LTP.
 
 ## `GET /analysis/{instrument}`
 
