@@ -56,7 +56,7 @@ class PositionCard extends StatelessWidget {
                 children: [
                   Flexible(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         _SymbolTitle(symbol: p.symbol, dimmed: closed),
                         if (p.segment.isNotEmpty) ...[
