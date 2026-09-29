@@ -64,7 +64,7 @@ class InstrumentTitle extends StatelessWidget {
               child: Container(
                 width: badge,
                 height: badge,
-                margin: const EdgeInsets.symmetric(horizontal: 2),
+                margin: const EdgeInsets.only(left: 4, right: 2),
                 alignment: Alignment.center,
                 decoration: const BoxDecoration(
                   color: TradePalette.weekBadge,
