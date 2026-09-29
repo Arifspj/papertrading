@@ -98,6 +98,20 @@ class HnicallsPollingStream implements MarketStream {
   @override
   Stream<StreamEvent> get events => _controller.stream;
 
+  /// Fetches the chain, retrying once.
+  ///
+  /// Upstream's chain route fails intermittently (a 500 while the same minute's
+  /// ticker call is fine), and it has been observed recovering within the same
+  /// session. One cheap retry turns a good share of those into real data
+  /// instead of a row stuck on its seeded price.
+  Future<OptionChain> _chainWithRetry(String underlying) async {
+    try {
+      return await client.fetchOptionChain(underlying);
+    } catch (_) {
+      return client.fetchOptionChain(underlying);
+    }
+  }
+
   @override
   Future<void> start() async {
     _stopped = false;
@@ -196,7 +210,7 @@ class HnicallsPollingStream implements MarketStream {
       var chainFailed = false;
       OptionChain? chain;
       try {
-        chain = await client.fetchOptionChain(underlying);
+        chain = await _chainWithRetry(underlying);
         if (chain.isEmpty) {
           failures++;
           chainFailed = true;

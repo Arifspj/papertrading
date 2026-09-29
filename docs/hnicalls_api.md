@@ -49,6 +49,14 @@ Option LTP reaches the UI like this: the watchlist and positions screens call
 underlying, and anything the chain misses falls back to `/ltp/...`. Indices on
 those screens come from `ticker_app` and need no tracking.
 
+Both option routes come back and go: the same URL returns 200 for a stretch and
+then 500 for minutes at a time, while `ticker_app` keeps working the whole time.
+The chain is therefore retried once per cycle, which recovers a good share of
+the blips. During a full outage the watchlist and positions still show index
+LTP, option rows fall back to their stored price, and the status chip reads
+`DEGRADED` — so "no live option LTP" is a real upstream outage, not a wiring
+bug.
+
 ## Gotchas
 
 - **Case matters.** `/analysis/NIFTY` works; `/option-chain/NIFTY` fails while
