@@ -144,4 +144,32 @@ class SymbolParts {
     if (isFuture) return 'Futures';
     return 'Equity';
   }
+
+  /// Bare instrument for market-data APIs, e.g. `NIFTY`, `BANKNIFTY`, `SENSEX`.
+  /// Empty when the symbol is not an index-style derivative.
+  String get apiInstrument =>
+      isOption || isFuture ? underlying.toUpperCase() : '';
+
+  /// Numeric strike, or null for futures/cash symbols.
+  int? get strikeValue {
+    final s = strike;
+    if (s == null) return null;
+    final d = double.tryParse(s);
+    if (d == null) return null;
+    return d.round();
+  }
+
+  /// `CE` / `PE` / `FUT`, ready for the `/ltp/{instrument}/{strike}/{type}` API.
+  String get apiOptionType => instrumentType ?? '';
+
+  /// Canonical API symbol used to match a live quote to this instrument,
+  /// e.g. `NIFTY 22700 CE` (no expiry tokens — the API keys on these).
+  String get apiSymbol {
+    final i = apiInstrument;
+    if (i.isEmpty) return raw.toUpperCase();
+    final k = strikeValue;
+    if (k == null) return i;
+    final t = apiOptionType;
+    return t.isEmpty ? '$i $k' : '$i $k $t';
+  }
 }

@@ -16,6 +16,7 @@ class TradePalette {
   static const Color uLogo = Color(0xFFE65C00);
   static const Color weekBadge = Color(0xFF94B7F5);
 
+  static const Color amber = Color(0xFFF59E0B);
   static const Color slate100 = Color(0xFFF1F5F9);
   static const Color slate200 = Color(0xFFE2E8F0);
   static const Color slate300 = Color(0xFFCBD5E1);

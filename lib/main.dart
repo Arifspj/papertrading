@@ -7,6 +7,7 @@ import 'repositories/mock_positions_repository.dart';
 import 'repositories/positions_repository.dart';
 import 'repositories/watchlist_repository.dart';
 import 'screens/shell_screen.dart';
+import 'services/live/live_market_controller.dart';
 
 /// CyberPulse — paper trading terminal.
 ///
@@ -14,6 +15,10 @@ import 'screens/shell_screen.dart';
 ///  - Today: [MockPositionsRepository] (seeded demo book).
 ///  - When the real backend is ready, swap the provider below for
 ///    `HttpPositionsRepository()` and set `PAPER_TRADE_BASE_URL`.
+///
+/// Market data:
+///  - [LiveMarketController] pulls HNICALLS (ticker_app / analysis / observation)
+///    and pushes it into the Watchlist. See `docs/live_stream.md`.
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const CyberPulseApp());
@@ -33,6 +38,9 @@ class CyberPulseApp extends StatelessWidget {
           ),
           Provider<WatchlistRepository>(
             create: (_) => MockWatchlistRepository(),
+          ),
+          ChangeNotifierProvider<LiveMarketController>(
+            create: (_) => LiveMarketController(),
           ),
         ],
         child: Consumer<ThemeController>(

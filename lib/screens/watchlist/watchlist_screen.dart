@@ -4,8 +4,12 @@ import 'package:provider/provider.dart';
 
 import '../../core/theme/cyber_colors.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/symbol_formatter.dart';
+import '../../models/market/live_quote.dart';
 import '../../models/watchlist.dart';
 import '../../repositories/watchlist_repository.dart';
+import '../../services/live/live_market_controller.dart';
+import '../../services/live/market_stream.dart';
 import '../../widgets/instrument_title.dart';
 import '../positions/widgets/order_pad_sheet.dart';
 import 'widgets/watchlist_search_sheet.dart';
@@ -105,6 +109,51 @@ class _WatchlistScreenState extends State<WatchlistScreen> {
     );
   }
 
+  /// Live badge: dot colour + transport name, driven by the stream status.
+  Widget _liveChip() {
+    return Consumer<LiveMarketController>(
+      builder: (context, live, _) {
+        final color = switch (live.status) {
+          StreamStatus.live => TradePalette.positiveGreen,
+          StreamStatus.connecting => TradePalette.amber,
+          StreamStatus.degraded => TradePalette.amber,
+          _ => TradePalette.slate400,
+        };
+        final label = switch (live.status) {
+          StreamStatus.live => 'LIVE · ${live.transportName}',
+          StreamStatus.connecting => 'CONNECTING',
+          StreamStatus.degraded => 'DEGRADED',
+          StreamStatus.disconnected => 'OFFLINE',
+          StreamStatus.failed => 'OFFLINE',
+          StreamStatus.idle => 'IDLE',
+        };
+        return GestureDetector(
+          onTap: live.refresh,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.3,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _titleRow() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 14, 20, 12),
@@ -129,6 +178,8 @@ class _WatchlistScreenState extends State<WatchlistScreen> {
             ),
           ),
           const Spacer(),
+          _liveChip(),
+          const SizedBox(width: 12),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
@@ -250,15 +301,23 @@ class _WatchlistScreenState extends State<WatchlistScreen> {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
-    return ListView.separated(
-      padding: EdgeInsets.zero,
-      itemCount: _items.length,
-      separatorBuilder: (_, i) =>
-          const Divider(color: TradePalette.slate100, height: 1),
-      itemBuilder: (context, i) => _WatchRow(
-        item: _items[i],
-        onTap: () => _openOrderPad(_items[i]),
-      ),
+    return Consumer<LiveMarketController>(
+      builder: (context, live, _) {
+        return ListView.separated(
+          padding: EdgeInsets.zero,
+          itemCount: _items.length,
+          separatorBuilder: (_, i) =>
+              const Divider(color: TradePalette.slate100, height: 1),
+          itemBuilder: (context, i) {
+            final item = _items[i];
+            return _WatchRow(
+              item: item,
+              live: live.quoteFor(SymbolParts.parse(item.symbol).apiSymbol),
+              onTap: () => _openOrderPad(item),
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -266,18 +325,25 @@ class _WatchlistScreenState extends State<WatchlistScreen> {
 /// One quote row: symbol + W badge (left) and price + change (right).
 class _WatchRow extends StatelessWidget {
   final WatchItem item;
+
+  /// Live quote from HNICALLS. When present it replaces the seeded mock price.
+  final LiveQuote? live;
+
   final VoidCallback onTap;
 
-  const _WatchRow({required this.item, required this.onTap});
+  const _WatchRow({required this.item, required this.onTap, this.live});
 
   @override
   Widget build(BuildContext context) {
-    final gain = item.isGain;
+    final price = live?.ltp ?? item.lastPrice;
+    final change = live?.change ?? item.change;
+    final changePct = live?.changePct ?? item.changePct;
+    final gain = change >= 0;
     final priceColor =
         gain ? TradePalette.positiveGreen : TradePalette.negativeRed;
     final changeText =
-        '${gain ? '+' : '-'}${formatAmount(item.change.abs())} '
-        '(${gain ? '+' : '-'}${formatPlain(item.changePct.abs())}%)';
+        '${gain ? '+' : '-'}${formatAmount(change.abs())} '
+        '(${gain ? '+' : '-'}${formatPlain(changePct.abs())}%)';
 
     return InkWell(
       onTap: onTap,
@@ -292,7 +358,7 @@ class _WatchRow extends StatelessWidget {
                   InstrumentTitle(symbol: item.symbol),
                   const SizedBox(height: 2),
                   Text(
-                    item.segment,
+                    live == null ? item.segment : '${item.segment} · live',
                     style: const TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w500,
@@ -307,7 +373,7 @@ class _WatchRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  formatAmount(item.lastPrice),
+                  formatAmount(price),
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
