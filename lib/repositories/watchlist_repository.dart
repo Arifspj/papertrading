@@ -1,3 +1,4 @@
+import '../core/market/lot_sizes.dart';
 import '../core/utils/symbol_formatter.dart';
 import '../models/watchlist.dart';
 
@@ -124,6 +125,23 @@ class MockWatchlistRepository implements WatchlistRepository {
     ),
   ];
 
+  /// The whole F&O tradable universe, derived from [LotSizes] so the search
+  /// sheet always matches the lot table we validate orders against.
+  ///
+  /// Prices are seeded at 0: these rows exist so the symbol is *searchable*
+  /// and so the live overlay has something to attach a quote to. A symbol with
+  /// no live quote yet renders as "—" rather than a fake price.
+  static final List<WatchItem> _fnoUniverse = [
+    for (final symbol in LotSizes.fnoUnderlyings)
+      WatchItem(
+        symbol: symbol,
+        lastPrice: 0,
+        change: 0,
+        changePct: 0,
+        segment: LotSizes.indexLots.containsKey(symbol) ? 'NSE' : 'NFO',
+      ),
+  ];
+
   final List<WatchItem> _items = List.of(_seed);
 
   @override
@@ -135,12 +153,21 @@ class MockWatchlistRepository implements WatchlistRepository {
   @override
   List<WatchItem> searchSymbols(String query) {
     final q = _compact(query);
-    if (q.isEmpty) return List.of(_catalog);
-    return _catalog
-        .where((e) =>
-            _compact(e.symbol).contains(q) ||
-            _compact(_displayForm(e.symbol)).contains(q))
-        .toList();
+    final all = [..._catalog, ..._fnoUniverse];
+    if (q.isEmpty) return all;
+    return all.where(_matches(q)).toList();
+  }
+
+  /// Match the raw symbol, the unified [SymbolParts] form, and any broker
+  /// alias, so `L&T`, `24OCT` and `01st` style queries all resolve.
+  bool Function(WatchItem) _matches(String q) {
+    bool match(WatchItem e) {
+      if (_compact(e.symbol).contains(q)) return true;
+      if (_compact(_displayForm(e.symbol)).contains(q)) return true;
+      return LotSizes.aliasKeysFor(e.symbol).any((k) => _compact(k).contains(q));
+    }
+
+    return match;
   }
 
   @override

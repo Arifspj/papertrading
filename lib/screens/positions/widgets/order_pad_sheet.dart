@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../core/market/lot_sizes.dart';
 import '../../../core/theme/cyber_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/symbol_formatter.dart';
@@ -21,12 +22,14 @@ Future<OrderPadAction?> showOrderPadSheet(
     context,
     position: position,
     initialSide: position.isClosed ? OrderPadAction.buy : OrderPadAction.sell,
-    initialQty: position.isClosed ? 20 : position.quantity.abs().toDouble(),
+    initialQty: position.isClosed
+        ? (LotSizes.forSymbol(position.symbol) ?? 1).toDouble()
+        : position.quantity.abs().toDouble(),
   );
 }
 
 /// Order Pad for a watchlist quote (no open position yet). Defaults to Buy
-/// with a small starting quantity.
+/// with exactly one lot of the underlying.
 Future<OrderPadAction?> showWatchOrderPadSheet(
   BuildContext context, {
   required String symbol,
@@ -34,11 +37,14 @@ Future<OrderPadAction?> showWatchOrderPadSheet(
   required double lastPrice,
   required double change,
 }) {
+  // One lot of the underlying. Unknown symbols fall back to 1 share so the
+  // pad is still usable for cash instruments.
+  final lot = LotSizes.forSymbol(symbol) ?? 1;
   return _showOrderPad(
     context,
     position: Position(
       symbol: symbol,
-      quantity: 20,
+      quantity: lot,
       // "Previous close" implied by the quote so the change row matches.
       averagePrice: lastPrice - change,
       lastTradedPrice: lastPrice,
@@ -47,7 +53,7 @@ Future<OrderPadAction?> showWatchOrderPadSheet(
       segment: segment,
     ),
     initialSide: OrderPadAction.buy,
-    initialQty: 20,
+    initialQty: lot.toDouble(),
   );
 }
 
@@ -101,23 +107,60 @@ class _OrderPadSheetState extends State<_OrderPadSheet> {
   _ProductKind _product = _ProductKind.overnight;
   bool _moreOpen = false;
 
+  /// Lot size for the traded underlying, resolved from the symbol.
+  late final int _lotSize;
+
+  /// Ticks up whenever the qty field changes, so the footer can re-validate.
+  int _qtyVersion = 0;
+
   @override
   void initState() {
     super.initState();
     final p = widget.position;
     _side = widget.initialSide;
-    _qtyCtrl = TextEditingController(text: formatQty(widget.initialQty));
+    _lotSize = LotSizes.forSymbol(p.symbol) ?? 1;
+    // Seed a tradable quantity: keep [initialQty] when it already lands on a
+    // whole lot, otherwise fall back to the nearest lot at or below it.
+    final seed = LotSizes.isValidQty(widget.initialQty, _lotSize)
+        ? widget.initialQty
+        : LotSizes.nearestValidQty(widget.initialQty, _lotSize, roundUp: true)
+            .toDouble();
+    _qtyCtrl = TextEditingController(
+      text: seed > 0 ? formatQty(seed) : '$_lotSize',
+    );
     _limitCtrl = TextEditingController(text: formatPlain(p.lastTradedPrice));
+    _qtyCtrl.addListener(_onQtyChanged);
+  }
+
+  void _onQtyChanged() {
+    final next = _qtyCtrl.text;
+    // Ignore pure-formatting edits (e.g. a trailing "." from the keypad).
+    if (double.tryParse(next) == null && next.isNotEmpty) return;
+    setState(() => _qtyVersion++);
   }
 
   @override
   void dispose() {
+    _qtyCtrl.removeListener(_onQtyChanged);
     _qtyCtrl.dispose();
     _limitCtrl.dispose();
     super.dispose();
   }
 
+  /// Quantity currently typed in the form, or null when unparsable.
+  double? get _qty => double.tryParse(_qtyCtrl.text.trim());
+
+  /// Reason the qty cannot be traded, or null when it is valid.
+  String? get _qtyError {
+    final q = _qty;
+    if (q == null) return null;
+    return LotSizes.validationMessage(q, _lotSize);
+  }
+
+  bool get _canSubmit => _qtyError == null && (_qty ?? 0) > 0;
+
   void _confirm(OrderPadAction action) {
+    if (!_canSubmit) return;
     Navigator.of(context).pop(action);
   }
 
@@ -153,12 +196,15 @@ class _OrderPadSheetState extends State<_OrderPadSheet> {
                   _FormBox(
                     qtyCtrl: _qtyCtrl,
                     limitCtrl: _limitCtrl,
+                    lotSize: _lotSize,
+                    qtyError: _qtyError,
                     product: _product,
                     onProductChanged: (v) => setState(() => _product = v),
                   ),
                   _MoreToggle(
                     open: _moreOpen,
                     position: p,
+                    lotSize: _lotSize,
                     onToggle: () => setState(() => _moreOpen = !_moreOpen),
                   ),
                 ],
@@ -169,6 +215,9 @@ class _OrderPadSheetState extends State<_OrderPadSheet> {
             position: p,
             isBuy: isBuy,
             side: _side,
+            liveQty: _qty,
+            qtyError: _qtyError,
+            canSubmit: _canSubmit,
             onSideChanged: (s) => setState(() => _side = s),
             onComplete: _confirm,
           ),
@@ -329,12 +378,18 @@ class _FormBox extends StatelessWidget {
   final TextEditingController limitCtrl;
   final _ProductKind product;
   final ValueChanged<_ProductKind> onProductChanged;
+  final int lotSize;
+
+  /// Non-null when the typed quantity is not a valid multiple of [lotSize].
+  final String? qtyError;
 
   const _FormBox({
     required this.qtyCtrl,
     required this.limitCtrl,
     required this.product,
     required this.onProductChanged,
+    required this.lotSize,
+    required this.qtyError,
   });
 
   @override
@@ -353,6 +408,13 @@ class _FormBox extends StatelessWidget {
             label: 'Quantity',
             hint: '',
             controller: qtyCtrl,
+            errorText: qtyError,
+            onSubmitted: (text) => _snapToLot(text),
+          ),
+          _LotHint(
+            lotSize: lotSize,
+            error: qtyError,
+            onPick: (lots) => _applyLots(lots),
           ),
           const SizedBox(height: 14),
           _InputRow(
@@ -377,6 +439,23 @@ class _FormBox extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  void _applyLots(int lots) {
+    final next = (lots * lotSize).toString();
+    qtyCtrl.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: next.length),
+    );
+  }
+
+  /// Round the typed quantity down onto a whole number of lots.
+  void _snapToLot(String text) {
+    final q = double.tryParse(text.trim());
+    if (q == null) return;
+    final snapped = LotSizes.nearestValidQty(q, lotSize);
+    if (snapped == 0 || snapped == q) return;
+    _applyLots((snapped / lotSize).round());
   }
 
   Widget _radio(String label, bool selected, VoidCallback onTap) {
@@ -410,17 +489,96 @@ class _FormBox extends StatelessWidget {
   }
 }
 
+/// "Lot size 65 · 1x 2x 3x 5x" quick-multiplier strip under the qty field.
+class _LotHint extends StatelessWidget {
+  final int lotSize;
+  final String? error;
+  final ValueChanged<int> onPick;
+
+  const _LotHint({required this.lotSize, required this.error, required this.onPick});
+
+  static const _multipliers = [1, 2, 3, 5];
+
+  @override
+  Widget build(BuildContext context) {
+    final invalid = error != null;
+    final color = invalid ? TradePalette.negativeRed : TradePalette.slate500;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        children: [
+          Text(
+            'Lot $lotSize',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+          const SizedBox(width: 10),
+          for (final m in _multipliers) ...[
+            _chip(m, invalid),
+            const SizedBox(width: 6),
+          ],
+          const Spacer(),
+          Flexible(
+            child: Text(
+              invalid ? 'Qty must be a multiple' : 'Qty in lots',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+                color: invalid
+                    ? TradePalette.negativeRed
+                    : TradePalette.slate400,
+              ),
+              textAlign: TextAlign.right,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _chip(int multiplier, bool invalid) {
+    return GestureDetector(
+      onTap: () => onPick(multiplier),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: invalid ? TradePalette.red50 : TradePalette.slate100,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: invalid ? TradePalette.negativeRed : TradePalette.slate200,
+          ),
+        ),
+        child: Text(
+          '${multiplier}x',
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: invalid ? TradePalette.negativeRed : TradePalette.slate600,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _InputRow extends StatelessWidget {
   final String label;
   final String hint;
   final TextEditingController controller;
   final bool withEdit;
+  final String? errorText;
+  final ValueChanged<String>? onSubmitted;
 
   const _InputRow({
     required this.label,
     required this.hint,
     required this.controller,
     this.withEdit = false,
+    this.errorText,
+    this.onSubmitted,
   });
 
   @override
@@ -453,6 +611,7 @@ class _InputRow extends StatelessWidget {
           height: 44,
           child: TextField(
             controller: controller,
+            onSubmitted: onSubmitted,
             keyboardType: const TextInputType.numberWithOptions(
               decimal: true,
             ),
@@ -464,6 +623,12 @@ class _InputRow extends StatelessWidget {
             decoration: InputDecoration(
               hintText: hint,
               isDense: true,
+              errorText: errorText,
+              errorStyle: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: TradePalette.negativeRed,
+              ),
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 14,
                 vertical: 12,
@@ -472,12 +637,18 @@ class _InputRow extends StatelessWidget {
               fillColor: Colors.white,
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: TradePalette.slate300),
+                borderSide: BorderSide(
+                  color: errorText != null
+                      ? TradePalette.negativeRed
+                      : TradePalette.slate300,
+                ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(
-                  color: TradePalette.primary,
+                borderSide: BorderSide(
+                  color: errorText != null
+                      ? TradePalette.negativeRed
+                      : TradePalette.primary,
                   width: 1.5,
                 ),
               ),
@@ -493,11 +664,13 @@ class _MoreToggle extends StatelessWidget {
   final bool open;
   final VoidCallback onToggle;
   final Position position;
+  final int lotSize;
 
   const _MoreToggle({
     required this.open,
     required this.onToggle,
     required this.position,
+    required this.lotSize,
   });
 
   @override
@@ -544,6 +717,10 @@ class _MoreToggle extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 _MoreRow('Product', position.product),
+                const SizedBox(height: 12),
+                _MoreRow('Lot size', '$lotSize units'),
+                const SizedBox(height: 12),
+                _MoreRow('Lot size as of', 'Nov 2026'),
               ],
             ),
           ),
@@ -590,12 +767,22 @@ class _StickyFooter extends StatelessWidget {
   final ValueChanged<OrderPadAction> onSideChanged;
   final ValueChanged<OrderPadAction> onComplete;
 
+  /// Quantity currently in the qty field, used for the live margin estimate.
+  /// Null when the field is empty or unparsable.
+  final double? liveQty;
+
+  final String? qtyError;
+  final bool canSubmit;
+
   const _StickyFooter({
     required this.position,
     required this.isBuy,
     required this.side,
     required this.onSideChanged,
     required this.onComplete,
+    required this.liveQty,
+    required this.qtyError,
+    required this.canSubmit,
   });
 
   @override
@@ -615,9 +802,17 @@ class _StickyFooter extends StatelessWidget {
           const SizedBox(height: 8),
           _sideSwitcher(),
           const SizedBox(height: 8),
+          if (qtyError != null) ...[
+            _blockedBanner(qtyError!),
+            const SizedBox(height: 8),
+          ],
           _SwipeButton(
-            color: isBuy ? TradePalette.primary : TradePalette.negativeRed,
-            label: isBuy ? 'Swipe to Buy' : 'Swipe to Sell',
+            color: canSubmit
+                ? (isBuy ? TradePalette.primary : TradePalette.negativeRed)
+                : TradePalette.slate300,
+            label: canSubmit
+                ? (isBuy ? 'Swipe to Buy' : 'Swipe to Sell')
+                : 'Qty must be a multiple of the lot',
             onComplete: () => onComplete(side),
           ),
         ],
@@ -625,8 +820,41 @@ class _StickyFooter extends StatelessWidget {
     );
   }
 
+  Widget _blockedBanner(String message) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: TradePalette.red50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: TradePalette.negativeRed),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            LucideIcons.circleAlert,
+            size: 14,
+            color: TradePalette.negativeRed,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: TradePalette.negativeRed,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _marginRow() {
-    final margin = position.quantity.abs() * position.lastTradedPrice;
+    final qty = liveQty ?? position.quantity.abs();
+    final margin = qty * position.lastTradedPrice;
     return Row(
       children: [
         const Text(
