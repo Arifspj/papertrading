@@ -43,6 +43,11 @@ class LiveMarketController extends ChangeNotifier {
   final Duration wsGracePeriod;
 
   final Map<String, LiveQuote> _quotes = {};
+
+  /// The header ticker's own view of the world. Kept apart from [_quotes] so a
+  /// same-symbol quote from another feed (the analysis spot price) cannot
+  /// silently remove an index from the strip.
+  final Map<String, LiveQuote> _tickerQuotes = {};
   StreamSubscription<StreamEvent>? _sub;
   StreamStatus _status = StreamStatus.idle;
   MarketStream? _active;
@@ -59,18 +64,13 @@ class LiveMarketController extends ChangeNotifier {
   /// Quotes suitable for the header ticker: real prices from the ticker feed
   /// only, one entry per symbol, sorted for a stable marquee.
   ///
-  /// Cash rows the watchlist seeds with a placeholder price are dropped, so
-  /// the strip never shows a stale zero. A quote only counts once a price has
-  /// actually arrived. Option LTP and chain prices are deliberately excluded
-  /// so they cannot leak into the header.
+  /// The ticker keeps its own map, because the analysis poll writes the same
+  /// index symbols (NIFTY, SENSEX…) under a different source and would
+  /// otherwise evict the ticker prices from the shared one.
   List<LiveQuote> get tickerQuotes {
-    final seen = <String>{};
-    final out = <LiveQuote>[];
-    for (final q in _quotes.values) {
-      if (q.source != kTickerQuoteSource) continue;
-      if (q.ltp == 0 || !seen.add(q.symbol)) continue;
-      out.add(q);
-    }
+    final out = _tickerQuotes.values
+        .where((q) => q.ltp != 0)
+        .toList(growable: false);
     out.sort((a, b) => a.symbol.compareTo(b.symbol));
     return out;
   }
@@ -93,6 +93,7 @@ class LiveMarketController extends ChangeNotifier {
   Future<void> start() async {
     await _teardown();
     _quotes.clear();
+    _tickerQuotes.clear();
     _wsDelivered = false;
     if (_ws.isSupported) {
       _active = _ws;
@@ -125,6 +126,7 @@ class LiveMarketController extends ChangeNotifier {
     _message = event.message;
     for (final q in event.quotes) {
       _quotes[q.symbol] = q;
+      if (q.source == kTickerQuoteSource) _tickerQuotes[q.symbol] = q;
     }
     // A cycle that came back with nothing means the feed is gone, not that the
     // last prices are still good. Drop the ticker rows so the header strip
@@ -138,14 +140,9 @@ class LiveMarketController extends ChangeNotifier {
 
   /// Removes the ticker rows and reports whether anything was actually dropped.
   bool _dropTickerQuotes() {
-    final stale = _quotes.values
-        .where((q) => q.source == kTickerQuoteSource)
-        .map((q) => q.symbol)
-        .toSet();
-    if (stale.isEmpty) return false;
-    for (final symbol in stale) {
-      _quotes.remove(symbol);
-    }
+    if (_tickerQuotes.isEmpty) return false;
+    _tickerQuotes.clear();
+    _quotes.removeWhere((_, q) => q.source == kTickerQuoteSource);
     return true;
   }
 

@@ -23,13 +23,13 @@ class HnicallsApiConfig {
     defaultValue: 'https://hnicalls.com/api/public/api',
   );
 
-  /// WebSocket endpoint. Referenced by HNICALLS' marketing page but currently
-  /// answers `404`, so the app falls back to HTTP polling — see
-  /// `docs/live_stream.md`.
-  static const String wsUrl = String.fromEnvironment(
-    'HNICALLS_WS_URL',
-    defaultValue: 'wss://api.hnicalls.com/ws/v1',
-  );
+  /// WebSocket endpoint, opt-in only.
+  ///
+  /// HNICALLS' marketing page advertises `wss://api.hnicalls.com/ws/v1` but it
+  /// answers `404` (probed Sept 2026), so it is **empty by default** and the
+  /// app goes straight to HTTP polling. Pass
+  /// `--dart-define=HNICALLS_WS_URL=wss://...` to try a real server.
+  static const String wsUrl = String.fromEnvironment('HNICALLS_WS_URL');
 
   /// Optional bearer token. Empty by default (public endpoints need none).
   static const String apiKey = String.fromEnvironment('HNICALLS_API_KEY');

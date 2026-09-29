@@ -64,6 +64,11 @@ class HnicallsWebSocketStream implements MarketStream {
     try {
       final channel = WebSocketChannel.connect(Uri.parse(url));
       _channel = channel;
+      // A failed handshake (e.g. HNICALLS answering 404) surfaces here as well
+      // as on the stream. Nothing awaits `ready`, so without a handler its
+      // error would escape as an unhandled zone error and take the app down.
+      // The stream's onError below is the real handler.
+      unawaited(channel.ready.then<void>((_) {}, onError: (Object _) {}));
       _sub = channel.stream.listen(
         _onMessage,
         onError: (Object e) => _scheduleReconnect('socket error: $e'),

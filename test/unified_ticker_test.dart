@@ -162,6 +162,20 @@ void main() {
       expect(controller.hasTickerData, isFalse);
     });
 
+    test('an index survives another feed quoting the same symbol', () async {
+      stream.push([_quote('NIFTY', 22716.20, -0.28)]);
+      await pumpEventQueue();
+      expect(controller.tickerQuotes.map((q) => q.symbol), ['NIFTY']);
+
+      // The analysis poll reports a spot price under the very same symbol
+      // with a different source. That must not evict the ticker row.
+      stream.push([_quote('NIFTY', 22700.00, 0.0, source: 'poll:analysis')]);
+      await pumpEventQueue();
+
+      expect(controller.tickerQuotes.map((q) => q.symbol), ['NIFTY']);
+      expect(controller.tickerQuotes.single.ltp, 22716.20);
+    });
+
     test('a poll that returns nothing drops the stale ticker prices', () async {
       stream.push([
         _quote('NIFTY', 22716.20, -0.28),

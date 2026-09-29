@@ -23,9 +23,11 @@ So the app ships two interchangeable transports behind one interface:
 2. **`HnicallsPollingStream`** — HTTP polling of the endpoints that work today.
    This is what actually delivers data in production today.
 
-`LiveMarketController` prefers the socket and **falls back to polling
-automatically** if the socket fails to deliver a quote within 6 seconds. The UI
-never knows or cares which one is active.
+`HNICALLS_WS_URL` is **empty by default**, so the app dials no socket and starts
+polling on the first frame. Only when you pass the define does the controller
+prefer the socket and **fall back to polling automatically** if it fails to
+deliver a quote within 6 seconds. The UI never knows or cares which one is
+active.
 
 ## Architecture
 
