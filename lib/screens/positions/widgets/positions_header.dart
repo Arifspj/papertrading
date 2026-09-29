@@ -111,6 +111,7 @@ class _Tab extends StatelessWidget {
           children: [
             Row(
               mainAxisAlignment: contentAlign,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Column(
                   mainAxisSize: MainAxisSize.min,
@@ -138,21 +139,24 @@ class _Tab extends StatelessWidget {
                 ),
                 if (showCount && count > 0) ...[
                     const SizedBox(width: 6),
-                    Container(
-                      width: 16,
-                      height: 16,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: pillColor,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Text(
-                        '$count',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w400,
-                          color: Colors.white,
-                          height: 1,
+                    Transform.translate(
+                      offset: const Offset(0, 1),
+                      child: Container(
+                        width: 16,
+                        height: 16,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: pillColor,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          '$count',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w400,
+                            color: Colors.white,
+                            height: 1,
+                          ),
                         ),
                       ),
                     ),
