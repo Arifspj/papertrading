@@ -7,6 +7,8 @@ import '../../core/utils/formatters.dart';
 import '../../models/watchlist.dart';
 import '../../repositories/watchlist_repository.dart';
 import '../positions/widgets/order_pad_sheet.dart';
+import 'widgets/watch_symbol_line.dart';
+import 'widgets/watchlist_search_sheet.dart';
 
 const _headerBg = Color(0xFFF8FAFF);
 
@@ -49,6 +51,30 @@ class _WatchlistScreenState extends State<WatchlistScreen> {
       _items = items;
       _loading = false;
     });
+  }
+
+  Future<void> _openSearch() async {
+    final added = await showWatchlistSearchSheet(context);
+    if (!mounted || added == null) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${added.symbol} added to Watchlist')),
+    );
+    _load();
+  }
+
+  Future<void> _openOrderPad(WatchItem item) async {
+    final action = await showWatchOrderPadSheet(
+      context,
+      symbol: item.symbol,
+      segment: item.segment,
+      lastPrice: item.lastPrice,
+      change: item.change,
+    );
+    if (!mounted || action == null) return;
+    final label = action == OrderPadAction.buy ? 'Buy' : 'Sell';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$label order placed for ${item.symbol} (demo)')),
+    );
   }
 
   @override
@@ -127,44 +153,52 @@ class _WatchlistScreenState extends State<WatchlistScreen> {
   Widget _searchBar() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-      child: Container(
-        height: 40,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          onTap: _openSearch,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: TradePalette.slate200),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x080F172A),
-              blurRadius: 4,
-              offset: Offset(0, 1),
+          child: Container(
+            height: 40,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: TradePalette.slate200),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x080F172A),
+                  blurRadius: 4,
+                  offset: Offset(0, 1),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: Row(
-          children: [
-            const Icon(
-              LucideIcons.search,
-              size: 16,
-              color: TradePalette.slate400,
-            ),
-            const SizedBox(width: 10),
-            const Expanded(
-              child: Text(
-                'Search & add (e.g. infy, nifty, weekly otm)',
-                style: TextStyle(
-                  fontSize: 13,
+            child: Row(
+              children: [
+                const Icon(
+                  LucideIcons.search,
+                  size: 16,
                   color: TradePalette.slate400,
                 ),
-              ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    'Search & add (e.g. infy, nifty, weekly otm)',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: TradePalette.slate400,
+                    ),
+                  ),
+                ),
+                const Icon(
+                  LucideIcons.slidersHorizontal,
+                  size: 16,
+                  color: TradePalette.slate500,
+                ),
+              ],
             ),
-            const Icon(
-              LucideIcons.slidersHorizontal,
-              size: 16,
-              color: TradePalette.slate500,
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -221,7 +255,10 @@ class _WatchlistScreenState extends State<WatchlistScreen> {
       itemCount: _items.length,
       separatorBuilder: (_, i) =>
           const Divider(color: TradePalette.slate100, height: 1),
-      itemBuilder: (context, i) => _WatchRow(item: _items[i]),
+      itemBuilder: (context, i) => _WatchRow(
+        item: _items[i],
+        onTap: () => _openOrderPad(_items[i]),
+      ),
     );
   }
 }
@@ -229,8 +266,9 @@ class _WatchlistScreenState extends State<WatchlistScreen> {
 /// One quote row: symbol + W badge (left) and price + change (right).
 class _WatchRow extends StatelessWidget {
   final WatchItem item;
+  final VoidCallback onTap;
 
-  const _WatchRow({required this.item});
+  const _WatchRow({required this.item, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -242,7 +280,7 @@ class _WatchRow extends StatelessWidget {
         '(${gain ? '+' : '-'}${formatPlain(item.changePct.abs())}%)';
 
     return InkWell(
-      onTap: () {},
+      onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
         child: Row(
@@ -251,7 +289,10 @@ class _WatchRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _SymbolLine(item: item),
+                  WatchSymbolLine(
+                    symbol: item.symbol,
+                    isWeekly: item.isWeekly,
+                  ),
                   const SizedBox(height: 2),
                   Text(
                     item.segment,
@@ -291,76 +332,6 @@ class _WatchRow extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-/// Weekly-option aware symbol line with superscript and "W" badge.
-class _SymbolLine extends StatelessWidget {
-  final WatchItem item;
-
-  const _SymbolLine({required this.item});
-
-  @override
-  Widget build(BuildContext context) {
-    final parts = SymbolParts.parse(item.symbol);
-    final base = const TextStyle(
-      fontSize: 15,
-      fontWeight: FontWeight.w600,
-      letterSpacing: -0.2,
-      color: TradePalette.slate900,
-      height: 1.3,
-    );
-    return Text.rich(
-      TextSpan(
-        style: base,
-        children: [
-          TextSpan(text: parts.head),
-          if (parts.suffix != null)
-            WidgetSpan(
-              alignment: PlaceholderAlignment.baseline,
-              baseline: TextBaseline.alphabetic,
-              child: Transform.translate(
-                offset: const Offset(0, -2),
-                child: Text(
-                  parts.suffix!,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: TradePalette.slate500,
-                    height: 1.0,
-                  ),
-                ),
-              ),
-            ),
-          if (item.isWeekly)
-            WidgetSpan(
-              alignment: PlaceholderAlignment.middle,
-              child: Container(
-                width: 14,
-                height: 14,
-                margin: const EdgeInsets.symmetric(horizontal: 2),
-                alignment: Alignment.center,
-                decoration: const BoxDecoration(
-                  color: TradePalette.weekBadge,
-                  shape: BoxShape.circle,
-                ),
-                child: const Text(
-                  'W',
-                  style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                    height: 1,
-                  ),
-                ),
-              ),
-            ),
-          TextSpan(text: parts.tail),
-        ],
-      ),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
     );
   }
 }

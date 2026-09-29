@@ -15,6 +15,46 @@ Future<OrderPadAction?> showOrderPadSheet(
   BuildContext context, {
   required Position position,
 }) {
+  return _showOrderPad(
+    context,
+    position: position,
+    initialSide: position.isClosed ? OrderPadAction.buy : OrderPadAction.sell,
+    initialQty: position.isClosed ? 20 : position.quantity.abs().toDouble(),
+  );
+}
+
+/// Order Pad for a watchlist quote (no open position yet). Defaults to Buy
+/// with a small starting quantity.
+Future<OrderPadAction?> showWatchOrderPadSheet(
+  BuildContext context, {
+  required String symbol,
+  required String segment,
+  required double lastPrice,
+  required double change,
+}) {
+  return _showOrderPad(
+    context,
+    position: Position(
+      symbol: symbol,
+      quantity: 20,
+      // "Previous close" implied by the quote so the change row matches.
+      averagePrice: lastPrice - change,
+      lastTradedPrice: lastPrice,
+      pnl: 0,
+      product: 'MIS',
+      segment: segment,
+    ),
+    initialSide: OrderPadAction.buy,
+    initialQty: 20,
+  );
+}
+
+Future<OrderPadAction?> _showOrderPad(
+  BuildContext context, {
+  required Position position,
+  required OrderPadAction initialSide,
+  required double initialQty,
+}) {
   return showModalBottomSheet<OrderPadAction>(
     context: context,
     backgroundColor: const Color(0xFFF4F6F8),
@@ -22,7 +62,11 @@ Future<OrderPadAction?> showOrderPadSheet(
       borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
     ),
     isScrollControlled: true,
-    builder: (_) => _OrderPadSheet(position: position),
+    builder: (_) => _OrderPadSheet(
+      position: position,
+      initialSide: initialSide,
+      initialQty: initialQty,
+    ),
   );
 }
 
@@ -34,8 +78,14 @@ enum _ProductKind { intraday, overnight }
 
 class _OrderPadSheet extends StatefulWidget {
   final Position position;
+  final OrderPadAction initialSide;
+  final double initialQty;
 
-  const _OrderPadSheet({required this.position});
+  const _OrderPadSheet({
+    required this.position,
+    required this.initialSide,
+    required this.initialQty,
+  });
 
   @override
   State<_OrderPadSheet> createState() => _OrderPadSheetState();
@@ -53,9 +103,8 @@ class _OrderPadSheetState extends State<_OrderPadSheet> {
   void initState() {
     super.initState();
     final p = widget.position;
-    _side = p.isClosed ? OrderPadAction.buy : OrderPadAction.sell;
-    final qty = p.isClosed ? 20 : p.quantity.abs();
-    _qtyCtrl = TextEditingController(text: formatQty(qty.toDouble()));
+    _side = widget.initialSide;
+    _qtyCtrl = TextEditingController(text: formatQty(widget.initialQty));
     _limitCtrl = TextEditingController(text: formatPlain(p.lastTradedPrice));
   }
 
