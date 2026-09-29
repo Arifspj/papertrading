@@ -246,7 +246,7 @@ class _PortfolioPanel extends StatelessWidget {
                 bottom: BorderSide(color: TradePalette.slate200),
               ),
             ),
-            padding: const EdgeInsets.fromLTRB(16, 6, 16, 14),
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
             child: _Toolbar(
               searching: searching,
               filtered: filtered,
