@@ -89,6 +89,17 @@ class HnicallsPollingStream implements MarketStream {
     _trackedByUnderlying.clear();
   }
 
+  /// Runs [body], folding any upstream error into `null` so a batch of parallel
+  /// requests can be awaited together without one failure cancelling the rest.
+  /// A `null` result is counted as a failed feed by the caller.
+  static Future<T?> _attempt<T>(Future<T> Function() body) async {
+    try {
+      return await body();
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   String get transportName => 'poll';
 
@@ -133,40 +144,45 @@ class HnicallsPollingStream implements MarketStream {
       failures++;
     }
 
-    for (final instrument in instruments) {
-      if (!HnicallsApiConfig.isKnownInstrument(instrument)) continue;
-      try {
-        final a = await client.fetchAnalysis(instrument);
-        if (!a.isSuccess) {
-          failures++;
-          continue;
-        }
-        final spot = LiveQuote(
-          symbol: a.instrument,
-          instrument: a.instrument,
-          ltp: a.spotPrice,
-          change: 0,
-          changePct: 0,
-          at: a.analyzedAt ?? DateTime.now(),
-          source: 'poll:analysis',
-        );
-        quotes.add(spot);
-        final atm = a.atmOption;
-        if (atm != null) {
-          quotes.add(
-            LiveQuote(
-              symbol: atm.symbol,
-              instrument: a.instrument,
-              ltp: atm.ltp,
-              change: atm.change,
-              changePct: atm.changePct,
-              at: a.analyzedAt ?? DateTime.now(),
-              source: 'poll:analysis',
-            ),
-          );
-        }
-      } catch (_) {
+    // The per-instrument analysis calls are independent, so they go out
+    // together. Issued one after another they cost the sum of every upstream
+    // round trip — around 5.4s for the four index analyses, which delayed the
+    // first live quote on screen to ~16s. In parallel the whole batch costs
+    // only the slowest one.
+    final analyses = await Future.wait([
+      for (final instrument in instruments)
+        if (HnicallsApiConfig.isKnownInstrument(instrument))
+          _attempt(() => client.fetchAnalysis(instrument)),
+    ]);
+
+    for (final a in analyses) {
+      if (a == null || !a.isSuccess) {
         failures++;
+        continue;
+      }
+      final spot = LiveQuote(
+        symbol: a.instrument,
+        instrument: a.instrument,
+        ltp: a.spotPrice,
+        change: 0,
+        changePct: 0,
+        at: a.analyzedAt ?? DateTime.now(),
+        source: 'poll:analysis',
+      );
+      quotes.add(spot);
+      final atm = a.atmOption;
+      if (atm != null) {
+        quotes.add(
+          LiveQuote(
+            symbol: atm.symbol,
+            instrument: a.instrument,
+            ltp: atm.ltp,
+            change: atm.change,
+            changePct: atm.changePct,
+            at: a.analyzedAt ?? DateTime.now(),
+            source: 'poll:analysis',
+          ),
+        );
       }
     }
 
@@ -199,25 +215,26 @@ class HnicallsPollingStream implements MarketStream {
     }
 
     // One chain call per underlying covers every tracked strike, so the whole
-    // watchlist/book costs a handful of requests instead of one per row.
+    // watchlist/book costs a handful of requests instead of one per row. The
+    // underlyings are independent, so their chains go out together too.
     //
     // This block must stay last: the analysis poll above writes the ATM
     // contract under the same symbol, and the chain is the authoritative price
     // for a strike the UI actually shows.
-    for (final entry in _trackedByUnderlying.entries) {
+    final trackedEntries = _trackedByUnderlying.entries
+        .where((e) => HnicallsApiConfig.isKnownInstrument(e.key))
+        .toList();
+
+    final chains = await Future.wait([
+      for (final e in trackedEntries) _attempt(() => _chainWithRetry(e.key)),
+    ]);
+
+    for (var u = 0; u < trackedEntries.length; u++) {
+      final entry = trackedEntries[u];
       final underlying = entry.key;
-      if (!HnicallsApiConfig.isKnownInstrument(underlying)) continue;
-      var chainFailed = false;
-      OptionChain? chain;
-      try {
-        chain = await _chainWithRetry(underlying);
-        if (chain.isEmpty) {
-          failures++;
-          chainFailed = true;
-        }
-      } catch (_) {
+      final chain = chains[u];
+      if (chain == null || chain.isEmpty) {
         failures++;
-        chainFailed = true;
       }
       final at = chain?.expiry ?? DateTime.now();
       for (final parts in entry.value) {
@@ -238,34 +255,52 @@ class HnicallsPollingStream implements MarketStream {
           ),
         );
       }
-      // The chain covers every strike, but it is the flakier of the two
-      // endpoints upstream. Anything it could not answer falls back to the
-      // single-contract route so one bad response does not blank the list.
+    }
+
+    // The chain covers every strike, but it is the flakier of the two
+    // endpoints upstream. Anything it could not answer falls back to the
+    // single-contract route so one bad response does not blank the list. These
+    // are per-contract requests, so they also go out together.
+    final unresolved = <SymbolParts>[];
+    for (final entry in trackedEntries) {
       for (final parts in entry.value) {
-        final strike = parts.strikeValue;
-        if (strike == null) continue;
+        if (parts.strikeValue == null) continue;
         if (quotes.any((q) => q.symbol == parts.apiSymbol)) continue;
-        try {
-          final ltp = await client.fetchOptionLtp(
-            underlying,
-            strike,
-            parts.instrumentType!,
-          );
-          if (ltp == null || ltp <= 0) continue;
-          quotes.add(
-            LiveQuote(
-              symbol: parts.apiSymbol,
-              instrument: underlying,
-              ltp: ltp,
-              change: 0,
-              changePct: 0,
-              at: DateTime.now(),
-              source: kContractLtpSource,
+        unresolved.add(parts);
+      }
+    }
+
+    if (unresolved.isNotEmpty) {
+      final fetched = await Future.wait([
+        for (final parts in unresolved)
+          _attempt(
+            () => client.fetchOptionLtp(
+              parts.apiInstrument,
+              parts.strikeValue!,
+              parts.instrumentType!,
             ),
-          );
-        } catch (_) {
-          if (chainFailed) failures++;
+          ),
+      ]);
+
+      for (var i = 0; i < unresolved.length; i++) {
+        final ltp = fetched[i];
+        if (ltp == null) {
+          failures++;
+          continue;
         }
+        if (ltp <= 0) continue;
+        final parts = unresolved[i];
+        quotes.add(
+          LiveQuote(
+            symbol: parts.apiSymbol,
+            instrument: parts.apiInstrument,
+            ltp: ltp,
+            change: 0,
+            changePct: 0,
+            at: DateTime.now(),
+            source: kContractLtpSource,
+          ),
+        );
       }
     }
 
