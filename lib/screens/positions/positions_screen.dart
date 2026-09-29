@@ -223,7 +223,13 @@ class _PositionsScreenState extends State<PositionsScreen> {
                     padding: const EdgeInsets.only(top: 7),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 23.5),
-                      child: _HeroCard(summary: _summary!),
+                      child: Consumer<LiveMarketController>(
+                        builder: (context, live, _) => _HeroCard(
+                          // Re-priced on every tick so the headline total moves
+                          // with the same live marks the rows below use.
+                          totalPnl: _liveTotalPnl(live),
+                        ),
+                      ),
                     ),
                   ),
               ],
@@ -232,6 +238,35 @@ class _PositionsScreenState extends State<PositionsScreen> {
         ),
       ),
     );
+  }
+
+  /// Total P&L re-priced on live marks.
+  ///
+  /// Mirrors [PositionCard] exactly — same "a live price only counts if it is
+  /// greater than zero" rule and the same `(ltp - avg) * qty` maths — so the
+  /// headline can never disagree with the sum of the rows it sits above. Any
+  /// position without a live quote contributes its booked P&L, which means the
+  /// total degrades gracefully instead of blanking while the feed catches up.
+  double _liveTotalPnl(LiveMarketController live) {
+    var total = 0.0;
+    var priced = 0;
+    for (final p in _all) {
+      if (p.isClosed) {
+        total += p.pnl;
+        priced++;
+        continue;
+      }
+      final quote = live.quoteFor(SymbolParts.parse(p.symbol).apiSymbol);
+      if (quote != null && quote.ltp > 0) {
+        total += (quote.ltp - p.averagePrice) * p.quantity;
+        priced++;
+      } else {
+        total += p.pnl;
+      }
+    }
+    // Nothing to add up yet: let the repository's figure stand rather than
+    // showing a misleading zero.
+    return priced == 0 ? (_summary?.totalPnl ?? 0) : total;
   }
 
   List<Widget> _buildPanelChildren(CyberColors c) {
@@ -411,14 +446,16 @@ class _ResultMeta extends StatelessWidget {
 /// Full-width square white box behind the Total P&L block, inset 20px from
 /// each side on the slate-100 backdrop, flowing into the white panel below.
 class _HeroCard extends StatelessWidget {
-  final PortfolioSummary summary;
+  /// Live-marked total, already summed by the screen. Falls back to the
+  /// repository's booked figure when the feed has nothing for any row.
+  final double totalPnl;
 
-  const _HeroCard({required this.summary});
+  const _HeroCard({required this.totalPnl});
 
   @override
   Widget build(BuildContext context) {
-    final value = formatSigned(summary.totalPnl);
-    final isProfit = summary.totalPnl >= 0;
+    final value = formatSigned(totalPnl);
+    final isProfit = totalPnl >= 0;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
