@@ -9,6 +9,7 @@ import '../../repositories/positions_repository.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/symbol_formatter.dart';
 import '../../services/live/live_market_controller.dart';
+import '../../services/positions/mis_auto_square_off_controller.dart';
 import '../../services/positions/position_retention_controller.dart';
 import '../../widgets/scale_fit.dart';
 import 'widgets/position_card.dart';
@@ -55,15 +56,22 @@ class _PositionsScreenState extends State<PositionsScreen> {
   /// Drops closed and expired rows at 07:00 the following morning.
   late final PositionRetentionController _retention;
 
+  /// Squares off intraday positions at 15:20.
+  late final MisAutoSquareOffController _misSquareOff;
+
   @override
   void initState() {
     super.initState();
     _repo = context.read<PositionsRepository>();
     _live = context.read<LiveMarketController>();
     _retention = context.read<PositionRetentionController>();
-    // Fires when the 07:00 boundary is crossed while the app is open, or on
-    // resume after being backgrounded overnight.
+    _misSquareOff = context.read<MisAutoSquareOffController>();
+    // Retention fires when the 07:00 cutoff is crossed while the app is open,
+    // or on resume after being backgrounded overnight.
     _retention.addListener(_onRetentionSweep);
+    // Fires when 15:20 squares off the intraday book, and on the resume
+    // catch-up.
+    _misSquareOff.addListener(_onMisSquareOff);
     _load();
   }
 
@@ -79,9 +87,16 @@ class _PositionsScreenState extends State<PositionsScreen> {
     _applyRetention();
   }
 
+  /// The 15:20 sweep changed the book, so the rows on screen are stale.
+  void _onMisSquareOff() {
+    if (!mounted) return;
+    _load();
+  }
+
   @override
   void dispose() {
     _retention.removeListener(_onRetentionSweep);
+    _misSquareOff.removeListener(_onMisSquareOff);
     _searchCtrl.dispose();
     if (_trackedApiSymbols.isNotEmpty) {
       _live.untrackSymbols(_trackedApiSymbols);

@@ -14,6 +14,7 @@ import 'package:paper_trade/repositories/watchlist_repository.dart';
 import 'package:paper_trade/screens/shell_screen.dart';
 import 'package:paper_trade/services/live/live_market_controller.dart';
 import 'package:paper_trade/services/live/market_stream.dart';
+import 'package:paper_trade/services/positions/mis_auto_square_off_controller.dart';
 import 'package:paper_trade/services/positions/position_retention_controller.dart';
 import 'package:paper_trade/widgets/unified_ticker.dart';
 
@@ -440,6 +441,13 @@ void main() {
           ChangeNotifierProvider<AppSettingsController>.value(value: settings),
           ChangeNotifierProvider<PositionRetentionController>(
             create: (_) => PositionRetentionController(observeLifecycle: false),
+          ),
+          ChangeNotifierProvider<MisAutoSquareOffController>(
+            create: (context) => MisAutoSquareOffController(
+              repository: context.read<PositionsRepository>(),
+              ltpOf: (_) => 0,
+              observeLifecycle: false,
+            ),
           ),
         ],
         child: MaterialApp(

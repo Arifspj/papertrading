@@ -16,6 +16,7 @@ import 'package:paper_trade/repositories/watchlist_repository.dart';
 import 'package:paper_trade/screens/positions/positions_screen.dart';
 import 'package:paper_trade/services/live/live_market_controller.dart';
 import 'package:paper_trade/services/live/market_stream.dart';
+import 'package:paper_trade/services/positions/mis_auto_square_off_controller.dart';
 import 'package:paper_trade/services/positions/position_retention_controller.dart';
 
 class _FakeStream implements MarketStream {
@@ -79,6 +80,15 @@ class _Repo implements PositionsRepository {
 
   @override
   Future<void> squareOff(String symbol) async {}
+
+  // The 15:20 rule is exercised in its own suite; the hero tests supply an
+  // inert book.
+  @override
+  Future<List<Position>> squareOffOpenMis({
+    required DateTime at,
+    required double Function(String symbol) ltpOf,
+  }) async =>
+      _positions;
 }
 
 class _Watch implements WatchlistRepository {
@@ -135,6 +145,13 @@ void main() {
           Provider<WatchlistRepository>.value(value: _Watch()),
           ChangeNotifierProvider<PositionRetentionController>(
             create: (_) => PositionRetentionController(observeLifecycle: false),
+          ),
+          ChangeNotifierProvider<MisAutoSquareOffController>(
+            create: (_) => MisAutoSquareOffController(
+              repository: repo,
+              ltpOf: (_) => 0,
+              observeLifecycle: false,
+            ),
           ),
         ],
         child: MaterialApp(

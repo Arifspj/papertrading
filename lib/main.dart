@@ -9,6 +9,7 @@ import 'repositories/positions_repository.dart';
 import 'repositories/watchlist_repository.dart';
 import 'screens/shell_screen.dart';
 import 'services/live/live_market_controller.dart';
+import 'services/positions/mis_auto_square_off_controller.dart';
 import 'services/positions/position_retention_controller.dart';
 
 /// CyberPulse — paper trading terminal.
@@ -52,6 +53,15 @@ class CyberPulseApp extends StatelessWidget {
           // dead Flutter process cannot wake itself.
           ChangeNotifierProvider<PositionRetentionController>(
             create: (_) => PositionRetentionController(),
+          ),
+          // Squares off intraday positions at 15:20, the way a broker does just
+          // before the close, so a day never ends holding a MIS position.
+          ChangeNotifierProvider<MisAutoSquareOffController>(
+            create: (context) => MisAutoSquareOffController(
+              repository: context.read<PositionsRepository>(),
+              ltpOf: (symbol) =>
+                  context.read<LiveMarketController>().quoteFor(symbol)?.ltp ?? 0,
+            ),
           ),
         ],
         child: Consumer<ThemeController>(

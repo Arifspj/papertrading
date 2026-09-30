@@ -37,8 +37,14 @@ class PositionCard extends StatelessWidget {
         ? live!.ltp
         : p.lastTradedPrice;
 
-    // Unrealised P&L on the live mark, falling back to the booked figure.
-    final pnl = live != null && ltp > 0
+    // A closed row shows its realised P&L as booked, never recomputed. Both
+    // `quantity` and `averagePrice` are zeroed on a square-off, so
+    // re-pricing one from the live mark would collapse to 0 and throw away the
+    // result the user actually locked in. The LTP beside it still ticks: the
+    // row stays tracked until retention removes it the next morning.
+    final pnl = closed
+        ? p.pnl
+        : live != null && ltp > 0
         ? (ltp - p.averagePrice) * p.quantity
         : p.pnl;
 

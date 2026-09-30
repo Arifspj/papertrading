@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import '../models/mis_square_off.dart';
 import '../models/position.dart';
 import 'positions_repository.dart';
+
 
 /// Seeded demo data matching the reference "Positions" design, so the app is
 /// fully usable until the real paper-trading API is connected.
@@ -12,9 +14,14 @@ import 'positions_repository.dart';
 /// makes the rule visible — the `01st OCT` rows expire tomorrow, so the next
 /// morning's 07:00 sweep has something to do.
 class MockPositionsRepository implements PositionsRepository {
-  MockPositionsRepository({DateTime? now, Duration? latency})
-      : _latency = latency ?? const Duration(milliseconds: 450),
+  MockPositionsRepository({
+    DateTime? now,
+    Duration? latency,
+    MisSquareOffPolicy policy = const MisSquareOffPolicy(),
+  })  : _latency = latency ?? const Duration(milliseconds: 450),
+        _policy = policy,
         _positions = List.of(_seed(now));
+
 
   /// Artificial latency that stands in for the network. Tests pass
   /// `Duration.zero`; a sweep across many dates is otherwise dominated by
@@ -104,6 +111,9 @@ class MockPositionsRepository implements PositionsRepository {
 
   final List<Position> _positions;
 
+  /// The 15:20 cut-off rule, kept as a field so a test can substitute the hour.
+  final MisSquareOffPolicy _policy;
+
   @override
   Future<List<Position>> fetchPositions() async {
     await Future<void>.delayed(_latency);
@@ -133,5 +143,43 @@ class MockPositionsRepository implements PositionsRepository {
     final closed = _positions.removeAt(i);
     _positions.add(closed);
   }
+
+  @override
+  Future<List<Position>> squareOffOpenMis({
+    required DateTime at,
+    required double Function(String symbol) ltpOf,
+  }) async {
+    await Future<void>.delayed(_latency);
+    final due = _policy.dueForSquareOff(_positions, at);
+    if (due.isEmpty) return List.of(_positions);
+
+    final closedIds = <String>{};
+    for (var i = 0; i < _positions.length; i++) {
+      final p = _positions[i];
+      if (!_policy.isDueForSquareOff(p, at)) continue;
+      // Live price wins, the stored last-traded price is the fallback so a
+      // silent feed still books a number rather than zero.
+      final ltp = ltpOf(p.symbol);
+      _positions[i] = _policy.squareOff(
+        p,
+        ltp > 0 ? ltp : p.lastTradedPrice,
+        at,
+      );
+      closedIds.add(p.retentionKey);
+    }
+
+    // Squared-off rows move to the end, matching [squareOff], so the book reads
+    // open lots first.
+    final stillOpen = _positions.where((p) => !closedIds.contains(p.retentionKey)).toList();
+    final justClosed =
+        _positions.where((p) => closedIds.contains(p.retentionKey)).toList();
+    _positions
+      ..clear()
+      ..addAll(stillOpen)
+      ..addAll(justClosed);
+
+    return List.of(_positions);
+  }
 }
+
 
