@@ -9,6 +9,7 @@ import 'repositories/positions_repository.dart';
 import 'repositories/watchlist_repository.dart';
 import 'screens/shell_screen.dart';
 import 'services/live/live_market_controller.dart';
+import 'services/positions/position_retention_controller.dart';
 
 /// CyberPulse — paper trading terminal.
 ///
@@ -45,6 +46,12 @@ class CyberPulseApp extends StatelessWidget {
           ),
           ChangeNotifierProvider<AppSettingsController>(
             create: (_) => AppSettingsController(),
+          ),
+          // Squares off and expired rows leave the book at 07:00 the next
+          // morning. Driven on fetch, on resume, and by a 07:00 timer, since a
+          // dead Flutter process cannot wake itself.
+          ChangeNotifierProvider<PositionRetentionController>(
+            create: (_) => PositionRetentionController(),
           ),
         ],
         child: Consumer<ThemeController>(

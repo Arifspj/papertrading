@@ -16,6 +16,7 @@ import 'package:paper_trade/repositories/watchlist_repository.dart';
 import 'package:paper_trade/screens/positions/positions_screen.dart';
 import 'package:paper_trade/services/live/live_market_controller.dart';
 import 'package:paper_trade/services/live/market_stream.dart';
+import 'package:paper_trade/services/positions/position_retention_controller.dart';
 
 class _FakeStream implements MarketStream {
   final _controller = StreamController<StreamEvent>.broadcast();
@@ -132,6 +133,9 @@ void main() {
           ),
           Provider<PositionsRepository>.value(value: repo),
           Provider<WatchlistRepository>.value(value: _Watch()),
+          ChangeNotifierProvider<PositionRetentionController>(
+            create: (_) => PositionRetentionController(observeLifecycle: false),
+          ),
         ],
         child: MaterialApp(
           theme: AppTheme.light,

@@ -9,6 +9,7 @@ import '../../repositories/positions_repository.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/symbol_formatter.dart';
 import '../../services/live/live_market_controller.dart';
+import '../../services/positions/position_retention_controller.dart';
 import '../../widgets/scale_fit.dart';
 import 'widgets/position_card.dart';
 import 'widgets/order_pad_sheet.dart';
@@ -45,16 +46,42 @@ class _PositionsScreenState extends State<PositionsScreen> {
   /// API symbols the live feed is currently polling for this book.
   Set<String> _trackedApiSymbols = {};
 
+  /// Rows exactly as the repository reported them, before retention.
+  List<Position> _raw = const [];
+
+  /// The repository's own summary, used untouched when nothing was retired.
+  PortfolioSummary? _repoSummary;
+
+  /// Drops closed and expired rows at 07:00 the following morning.
+  late final PositionRetentionController _retention;
+
   @override
   void initState() {
     super.initState();
     _repo = context.read<PositionsRepository>();
     _live = context.read<LiveMarketController>();
+    _retention = context.read<PositionRetentionController>();
+    // Fires when the 07:00 boundary is crossed while the app is open, or on
+    // resume after being backgrounded overnight.
+    _retention.addListener(_onRetentionSweep);
     _load();
+  }
+
+  /// Re-reads the book when retention says the cutoff may have passed, and
+  /// re-filters immediately when the persisted ids arrive. `_applyRetention`
+  /// works on the rows already in hand, so the sweep costs no extra fetch.
+  void _onRetentionSweep() {
+    if (!mounted) return;
+    if (_raw.isEmpty) {
+      _load();
+      return;
+    }
+    _applyRetention();
   }
 
   @override
   void dispose() {
+    _retention.removeListener(_onRetentionSweep);
     _searchCtrl.dispose();
     if (_trackedApiSymbols.isNotEmpty) {
       _live.untrackSymbols(_trackedApiSymbols);
@@ -71,13 +98,10 @@ class _PositionsScreenState extends State<PositionsScreen> {
       final positions = await _repo.fetchPositions();
       final summary = await _repo.fetchPortfolio();
       if (!mounted) return;
-      setState(() {
-        _all = positions;
-        _summary = summary;
-        _loading = false;
-      });
-      _applyVisible();
-      _syncTracked();
+      _raw = positions;
+      _repoSummary = summary;
+      _applyRetention();
+      setState(() => _loading = false);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -85,6 +109,27 @@ class _PositionsScreenState extends State<PositionsScreen> {
         _loading = false;
       });
     }
+  }
+
+  /// Re-runs the retention rule over the rows the repo handed us.
+  ///
+  /// Deliberately does not block on the retention store: the persisted ids load
+  /// asynchronously, and gating the first paint on a storage round trip would
+  /// stall the screen whenever storage is slow or unavailable. Instead the
+  /// controller notifies when the ids land and this runs again over the same
+  /// [_raw] list, so nothing has to be re-fetched.
+  void _applyRetention() {
+    final positions = _retention.retain(_raw);
+    final dropped = _raw.length != positions.length;
+    setState(() {
+      _all = positions;
+      // When rows were retired, the repo's summary still counts them. Rebuild
+      // from what is on screen so the header count and the hero P&L agree with
+      // the list.
+      _summary = dropped ? PortfolioSummary.fromPositions(positions) : _repoSummary;
+    });
+    _applyVisible();
+    _syncTracked();
   }
 
   /// Point the live feed at every open row in the book. [PositionCard] reads

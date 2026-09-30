@@ -14,6 +14,7 @@ import 'package:paper_trade/repositories/watchlist_repository.dart';
 import 'package:paper_trade/screens/shell_screen.dart';
 import 'package:paper_trade/services/live/live_market_controller.dart';
 import 'package:paper_trade/services/live/market_stream.dart';
+import 'package:paper_trade/services/positions/position_retention_controller.dart';
 import 'package:paper_trade/widgets/unified_ticker.dart';
 
 class _FakeStream implements MarketStream {
@@ -437,6 +438,9 @@ void main() {
           ChangeNotifierProvider<ThemeController>(create: (_) => ThemeController()),
           ChangeNotifierProvider<LiveMarketController>.value(value: controller),
           ChangeNotifierProvider<AppSettingsController>.value(value: settings),
+          ChangeNotifierProvider<PositionRetentionController>(
+            create: (_) => PositionRetentionController(observeLifecycle: false),
+          ),
         ],
         child: MaterialApp(
           theme: AppTheme.light,
