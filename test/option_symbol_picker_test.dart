@@ -162,6 +162,42 @@ void main() {
     });
   });
 
+  group('index LTP key match', () {
+    // The watchlist and position cards resolve a live quote through
+    // `quoteFor(SymbolParts.parse(symbol).apiSymbol)`, and the ticker feed keys
+    // on the bare uppercase index name. These have to line up exactly or an
+    // index row silently keeps its seeded price forever.
+    test('a bare index symbol keys the same as the ticker feed', () {
+      expect(SymbolParts.parse('NIFTY').apiSymbol, 'NIFTY');
+      expect(SymbolParts.parse('SENSEX').apiSymbol, 'SENSEX');
+      expect(SymbolParts.parse('BANKNIFTY').apiSymbol, 'BANKNIFTY');
+    });
+
+    test('a generated contract keys the same as the LTP route', () {
+      // `SENSEX 01st OCT 72900 PE` -> `SENSEX 72900 PE`, which is the path the
+      // `/ltp/sensex/72900/pe` route is called for.
+      final parts = SymbolParts.parse('SENSEX 01st OCT 72900 PE');
+      expect(parts.apiSymbol, 'SENSEX 72900 PE');
+      expect(parts.apiInstrument, 'SENSEX');
+      expect(parts.apiOptionType, 'PE');
+      expect(parts.strikeValue, 72900);
+    });
+
+    test('every generated ladder contract keys uniquely', () {
+      final ladder = OptionLadder.aroundAtm(
+        instrument: 'NIFTY',
+        atmStrike: 22600,
+        expiry: DateTime(2026, 10, 1),
+      );
+      final keys = ladder.contracts
+          .map((c) => SymbolParts.parse(c.symbol).apiSymbol)
+          .toList();
+      expect(keys.toSet().length, keys.length);
+      expect(keys, contains('NIFTY 22600 CE'));
+      expect(keys, contains('NIFTY 22600 PE'));
+    });
+  });
+
   group('OptionSymbolService', () {
     /// Serves the chain from [chainBody] and the analysis from a fixed ATM.
     HnicallsClient clientWhere({
