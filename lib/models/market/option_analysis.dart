@@ -142,6 +142,18 @@ class OptionAnalysis {
   ///
   /// `option_type` decides the suffix: `CALL` → `CE`, `PUT` → `PE`, and
   /// `NEUTRAL` (their "at-the-money, no directional lean" value) → no suffix.
+  /// The ATM contract this analysis is describing, or null when the side is
+  /// unknown.
+  ///
+  /// Upstream answers `option_type: "NEUTRAL"` most of the time, which does not
+  /// say whether the premium belongs to the call or the put. Emitting a quote
+  /// anyway would need a side to key it on, and inventing one would price the
+  /// wrong contract — so this stays null unless `CALL`/`PUT` is actually given.
+  ///
+  /// `change` and `changePct` are always zero: analysis reports no previous
+  /// close for the contract. They used to be derived as `premium - strike`,
+  /// which is not a change at all (a 22600 strike with a 339 premium reported
+  /// -22260, or -99.5%).
   ({String symbol, double ltp, double change, double changePct})? get atmOption {
     if (instrument.isEmpty || strike == 0) return null;
     final type = switch (optionType.toUpperCase()) {
@@ -149,14 +161,12 @@ class OptionAnalysis {
       'PUT' => 'PE',
       _ => '',
     };
-    final strikePrice = strike.toDouble();
-    final changePct =
-        ((premium - strikePrice) / strikePrice) * 100;
+    if (type.isEmpty) return null;
     return (
-      symbol: type.isEmpty ? '$instrument $strike' : '$instrument $strike $type',
+      symbol: '$instrument $strike $type',
       ltp: premium,
-      change: premium - strikePrice,
-      changePct: changePct,
+      change: 0,
+      changePct: 0,
     );
   }
 }

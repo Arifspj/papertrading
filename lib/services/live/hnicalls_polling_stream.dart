@@ -102,6 +102,14 @@ class HnicallsPollingStream implements LiveOptionPoller {
     }
   }
 
+  /// `yyyy-MM-dd` for an upstream expiry, or null when it is missing/unusable.
+  static String? _expiryStamp(DateTime? d) {
+    if (d == null) return null;
+    return '${d.year.toString().padLeft(4, '0')}-'
+        '${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}';
+  }
+
   @override
   String get transportName => 'poll';
 
@@ -140,6 +148,10 @@ class HnicallsPollingStream implements LiveOptionPoller {
     _inFlight = true;
     final quotes = <LiveQuote>[];
     var failures = 0;
+    // The expiry upstream reports alongside the ATM strike, reused as the
+    // contract expiry for the routes that are keyed on it. The per-symbol
+    // expiry from the tracked contract wins where it is known.
+    String? reportedExpiry;
 
     try {
       quotes.addAll(await client.fetchIndexQuotes());
@@ -173,6 +185,7 @@ class HnicallsPollingStream implements LiveOptionPoller {
         source: 'poll:analysis',
       );
       quotes.add(spot);
+      reportedExpiry ??= _expiryStamp(a.expiryDate);
       final atm = a.atmOption;
       if (atm != null) {
         quotes.add(
@@ -281,6 +294,9 @@ class HnicallsPollingStream implements LiveOptionPoller {
               parts.apiInstrument,
               parts.strikeValue!,
               parts.instrumentType!,
+              // The route is keyed on the expiry, so the contract's own stamp
+              // goes out, with the one analysis reported as the fallback.
+              expiryDate: parts.expiryStamp() ?? reportedExpiry,
             ),
           ),
       ]);

@@ -60,11 +60,27 @@ void main() {
       expect(analysis.factors, isEmpty);
     });
 
-    test('exposes the ATM option as a live-quote symbol', () {
-      final atm = analysis.atmOption;
-      expect(atm, isNotNull);
-      expect(atm!.symbol, 'NIFTY 22700');
-      expect(atm.ltp, 340.74);
+    test('emits no ATM option when the side is NEUTRAL', () {
+      // `analysis` carries option_type NEUTRAL. A premium with no side cannot
+      // be keyed on a contract, and the old type-less `NIFTY 22700` symbol
+      // never matched any tracked contract anyway.
+      expect(analysis.atmOption, isNull);
+      expect(analysis.strike, 22700);
+      expect(analysis.premium, 340.74);
+    });
+
+    test('reports no change for the ATM premium', () {
+      // Analysis has no previous close for the contract. It used to report
+      // `premium - strike` (340.74 - 22700 = -22359.26), which is not a change.
+      final atm = OptionAnalysis.fromJson({
+        'status': 'success',
+        'instrument': 'NIFTY',
+        'strike': 22700,
+        'premium': 340.74,
+        'option_type': 'CALL',
+      }).atmOption!;
+      expect(atm.change, 0);
+      expect(atm.changePct, 0);
     });
 
     test('maps option_type CALL / PUT to CE / PE', () {

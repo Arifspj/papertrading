@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'core/api/hnicalls_client.dart';
 import 'core/settings/app_settings_controller.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
@@ -9,6 +10,7 @@ import 'repositories/positions_repository.dart';
 import 'repositories/watchlist_repository.dart';
 import 'screens/shell_screen.dart';
 import 'services/live/live_market_controller.dart';
+import 'services/live/option_symbol_service.dart';
 import 'services/positions/mis_auto_square_off_controller.dart';
 import 'services/positions/position_retention_controller.dart';
 
@@ -47,6 +49,12 @@ class CyberPulseApp extends StatelessWidget {
           ),
           Provider<WatchlistRepository>(
             create: (_) => MockWatchlistRepository(),
+          ),
+          // Backs the watchlist "add" picker's option chain tab. Shares the
+          // default HnicallsClient so it goes through the same timeouts and
+          // error folding as the live poller.
+          Provider<OptionSymbolService>(
+            create: (_) => OptionSymbolService(client: HnicallsClient()),
           ),
           ChangeNotifierProvider<LiveMarketController>(
             create: (_) => LiveMarketController(),

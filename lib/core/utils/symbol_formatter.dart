@@ -52,6 +52,10 @@ class SymbolParts {
     'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
     'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
   };
+  static const _monthOrder = [
+    'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
+    'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
+  ];
   static final _day = RegExp(r'^(\d{1,2})(st|nd|rd|th)?$');
   static final _dayMonth = RegExp(r'^(\d{1,2})([A-Z]{3})$');
   static final _month = RegExp(r'^([A-Z]{3})$');
@@ -161,6 +165,40 @@ class SymbolParts {
 
   /// `CE` / `PE` / `FUT`, ready for the `/ltp/{instrument}/{strike}/{type}` API.
   String get apiOptionType => instrumentType ?? '';
+
+  /// The contract's expiry as `yyyy-MM-dd`, or null when the symbol carries no
+  /// usable expiry tokens.
+  ///
+  /// Upstream prices a contract per expiry and the `/ltp/*` route is keyed on
+  /// it, so a month/day pair has to be resolved to a real calendar date. That
+  /// pair repeats every year, so this returns the next occurrence on or after
+  /// [now], which keeps a symbol pinned to its own expiry rather than silently
+  /// rolling onto a contract that already expired.
+  String? expiryStamp({DateTime? now}) {
+    final m = month;
+    final d = day;
+    if (m == null || d == null) return null;
+    final monthIndex = _monthOrder.indexOf(m.toUpperCase());
+    if (monthIndex < 0) return null;
+    final dayValue = int.tryParse(d);
+    if (dayValue == null || dayValue < 1 || dayValue > 31) return null;
+
+    final ref = now ?? DateTime.now();
+    // Compared at day granularity, not by instant: on the expiry day itself
+    // `candidate` is equal to (not after) the reference, and an `isAfter` test
+    // would wrongly push it a whole year out.
+    final refDay = DateTime(ref.year, ref.month, ref.day);
+    for (var year = ref.year; year <= ref.year + 1; year++) {
+      final candidate = DateTime(year, monthIndex + 1, dayValue);
+      if (candidate.month != monthIndex + 1) continue; // e.g. 31 Feb
+      if (!candidate.isBefore(refDay)) {
+        return '${candidate.year.toString().padLeft(4, '0')}-'
+            '${candidate.month.toString().padLeft(2, '0')}-'
+            '${candidate.day.toString().padLeft(2, '0')}';
+      }
+    }
+    return null;
+  }
 
   /// Canonical API symbol used to match a live quote to this instrument,
   /// e.g. `NIFTY 22700 CE` (no expiry tokens — the API keys on these).

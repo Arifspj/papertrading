@@ -109,7 +109,62 @@ void main() {
       expect(seen.path, endsWith('/option-chain/nifty'));
     });
 
+    test('option LTP always sends an expiry', () async {
+      // Upstream answers 500 with
+      // `local variable 'expiry' referenced before assignment` when the route
+      // is called without the query, so this is load-bearing, not cosmetic.
+      late Uri seen;
+      final client = HnicallsClient(
+        client: MockClient((req) async {
+          seen = req.url;
+          return http.Response('{"ltp":159.8}', 200);
+        }),
+      );
+      final ltp = await client.fetchOptionLtp(
+        'NIFTY',
+        22600,
+        'CE',
+        expiryDate: '2026-10-06',
+      );
+      expect(seen.path, endsWith('/ltp/nifty/22600/ce'));
+      expect(seen.queryParameters['expiry'], '2026-10-06');
+      expect(ltp, 159.8);
+    });
+
+    test('option LTP works for the SENSEX shape upstream returns', () async {
+      late Uri seen;
+      final client = HnicallsClient(
+        client: MockClient((req) async {
+          seen = req.url;
+          return http.Response('{"ltp":562.2}', 200);
+        }),
+      );
+      await client.fetchOptionLtp(
+        'SENSEX',
+        72900,
+        'PE',
+        expiryDate: '2026-10-01',
+      );
+      expect(seen.path, endsWith('/ltp/sensex/72900/pe'));
+      expect(seen.queryParameters['expiry'], '2026-10-01');
+    });
+
+    test('option LTP omits an empty expiry rather than sending a blank', () async {
+      // Defensive: an empty `?expiry=` would be a different failure than no
+      // query at all, so it is dropped and the caller's own error surfaces.
+      late Uri seen;
+      final client = HnicallsClient(
+        client: MockClient((req) async {
+          seen = req.url;
+          return http.Response('{"ltp":1.5}', 200);
+        }),
+      );
+      await client.fetchOptionLtp('NIFTY', 22600, 'CE', expiryDate: '');
+      expect(seen.queryParameters.containsKey('expiry'), isFalse);
+    });
+
     test('option LTP uses the monthly segment when asked', () async {
+
       late Uri seen;
       final client = HnicallsClient(
         client: MockClient((req) async {
@@ -277,8 +332,51 @@ void main() {
       final live = events.where((e) => e.quotes.isNotEmpty).toList();
       expect(live, isNotEmpty);
       final symbols = live.last.quotes.map((q) => q.symbol).toSet();
-      expect(symbols, containsAll(<String>['NIFTY', 'NIFTY 22700']));
+      // The index quote is there. The analysis premium is not, because
+      // `option_type` is NEUTRAL and the ATM side is unknown — emitting it would
+      // mean inventing a CE or PE to key it on.
+      expect(symbols, contains('NIFTY'));
+      expect(symbols, isNot(contains('NIFTY 22700')));
     });
+
+    test('emits the analysis premium when the side is known', () async {
+      final client = HnicallsClient(
+        client: MockClient((req) async {
+          final path = req.url.path;
+          if (path.contains('/ticker_app')) {
+            return http.Response('{"smallList":[],"moversList":[]}', 200);
+          }
+          if (path.contains('/analysis/')) {
+            return http.Response(
+              '{"status":"success","instrument":"NIFTY","spotPrice":22716.2,'
+              '"strike":22700,"premium":340.74,"option_type":"CALL"}',
+              200,
+            );
+          }
+          return http.Response('{}', 500);
+        }),
+      );
+      final stream = HnicallsPollingStream(
+        client: client,
+        instruments: const ['NIFTY'],
+        interval: const Duration(hours: 1),
+      );
+      final events = <StreamEvent>[];
+      final sub = stream.events.listen(events.add);
+      await stream.start();
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      await sub.cancel();
+      await stream.stop();
+
+      final live = events.where((e) => e.quotes.isNotEmpty).toList();
+      expect(live, isNotEmpty);
+      final atm = live.last.quotes.firstWhere(
+        (q) => q.symbol == 'NIFTY 22700 CE',
+      );
+      expect(atm.ltp, 340.74);
+      expect(atm.change, 0);
+    });
+
 
     test('reports degraded when every feed fails', () async {
       final client = HnicallsClient(

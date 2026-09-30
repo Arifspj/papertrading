@@ -115,6 +115,11 @@ class HnicallsClient {
   /// `GET /api/ltp/{instrument}/{strike}/{CE|PE}` (weekly)
   /// `GET /api/ltp/{instrument}/monthly/{strike}/{CE|PE}` (monthly)
   ///
+  /// [expiry] is the contract's `yyyy-MM-dd` expiry. It is not optional in
+  /// practice: upstream answers `500 {"error":"local variable 'expiry'
+  /// referenced before assignment"}` when the route is called without one, so
+  /// the expiry is always sent.
+  ///
   /// Used as a fallback when the whole option chain is unavailable. The
   /// upstream route is case-insensitive, but lower-case matches the documented
   /// form and the `/option-chain/*` sibling route.
@@ -123,13 +128,18 @@ class HnicallsClient {
     int strike,
     String optionType, {
     HnExpiryType expiry = HnExpiryType.weekly,
+    String? expiryDate,
   }) async {
     final segment = optionType.toLowerCase();
     final path = expiry == HnExpiryType.monthly
         ? 'ltp/${instrument.toLowerCase()}/monthly/$strike/$segment'
         : 'ltp/${instrument.toLowerCase()}/$strike/$segment';
     final json = await _getJson(
-      _uri(HnicallsApiConfig.marketBase, path),
+      _uri(
+        HnicallsApiConfig.marketBase,
+        path,
+        expiryDate == null || expiryDate.isEmpty ? null : {'expiry': expiryDate},
+      ),
       timeout: const Duration(seconds: 8),
     );
     // Upstream has been seen to answer `ltp`, `premium` or `LTP`.
