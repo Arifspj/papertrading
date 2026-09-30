@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/cyber_colors.dart';
@@ -12,6 +11,7 @@ import '../../services/live/live_market_controller.dart';
 import '../../services/live/market_stream.dart';
 import '../../widgets/instrument_title.dart';
 import '../positions/widgets/order_pad_sheet.dart';
+import '../../core/icons/lucide_icons.dart';
 import 'widgets/watchlist_search_sheet.dart';
 
 const _headerBg = Color(0xFFF8FAFF);

@@ -132,7 +132,13 @@ void main() {
 
   tearDown(() => controller.dispose());
 
+  /// 10:00 on a trading day: before both the 15:20 square-off and the 07:00
+  /// retention boundary, so the seeded book is left alone regardless of when the
+  /// suite runs.
+  DateTime pinnedClock() => DateTime(2026, 9, 30, 10);
+
   Widget host(PositionsRepository repo) => MultiProvider(
+
         providers: [
           ChangeNotifierProvider<LiveMarketController>.value(value: controller),
           ChangeNotifierProvider<AppSettingsController>.value(
@@ -144,13 +150,16 @@ void main() {
           Provider<PositionsRepository>.value(value: repo),
           Provider<WatchlistRepository>.value(value: _Watch()),
           ChangeNotifierProvider<PositionRetentionController>(
-            create: (_) => PositionRetentionController(observeLifecycle: false),
+    create: (_) => PositionRetentionController(observeLifecycle: false, clock: pinnedClock),
+
           ),
           ChangeNotifierProvider<MisAutoSquareOffController>(
             create: (_) => MisAutoSquareOffController(
               repository: repo,
               ltpOf: (_) => 0,
               observeLifecycle: false,
+              clock: pinnedClock,
+
             ),
           ),
         ],

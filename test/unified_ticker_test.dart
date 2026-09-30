@@ -431,6 +431,11 @@ void main() {
   });
 
   group('shell integration', () {
+    /// 10:00 on a trading day: before both the 15:20 square-off and the 07:00
+    /// retention boundary, so the seeded book is left alone regardless of when
+    /// the suite runs.
+    DateTime pinnedClock() => DateTime(2026, 9, 30, 10);
+
     Widget shell(AppSettingsController settings) {
       return MultiProvider(
         providers: [
@@ -440,13 +445,15 @@ void main() {
           ChangeNotifierProvider<LiveMarketController>.value(value: controller),
           ChangeNotifierProvider<AppSettingsController>.value(value: settings),
           ChangeNotifierProvider<PositionRetentionController>(
-            create: (_) => PositionRetentionController(observeLifecycle: false),
+            create: (_) =>
+                PositionRetentionController(observeLifecycle: false, clock: pinnedClock),
           ),
           ChangeNotifierProvider<MisAutoSquareOffController>(
             create: (context) => MisAutoSquareOffController(
               repository: context.read<PositionsRepository>(),
               ltpOf: (_) => 0,
               observeLifecycle: false,
+              clock: pinnedClock,
             ),
           ),
         ],

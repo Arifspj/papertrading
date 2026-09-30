@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.30+1
+version: 1.0.31+1
 
 environment:
   sdk: ^3.10.0
@@ -35,7 +35,6 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   provider: ^6.1.5+1
-  lucide_icons_flutter: ^3.1.20
   intl: ^0.20.3
   http: ^1.6.0
   web_socket_channel: ^3.0.3
@@ -77,6 +76,9 @@ flutter:
     - family: JetBrainsMono
       fonts:
         - asset: assets/fonts/JetBrainsMono.ttf
+    - family: Lucide
+      fonts:
+        - asset: assets/fonts/lucide.ttf
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see

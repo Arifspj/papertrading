@@ -28,10 +28,16 @@ void main() {
 }
 
 class CyberPulseApp extends StatelessWidget {
-  const CyberPulseApp({super.key});
+  /// [clock] drives the 07:00 retention and 15:20 square-off cut-offs. It is a
+  /// parameter so tests can pin the time of day; leaving it null means the
+  /// device clock, which is what production wants.
+  const CyberPulseApp({super.key, this.clock});
+
+  final DateTime Function()? clock;
 
   @override
   Widget build(BuildContext context) {
+    final clock = this.clock;
     return ChangeNotifierProvider(
       create: (_) => ThemeController(),
       child: MultiProvider(
@@ -52,7 +58,7 @@ class CyberPulseApp extends StatelessWidget {
           // morning. Driven on fetch, on resume, and by a 07:00 timer, since a
           // dead Flutter process cannot wake itself.
           ChangeNotifierProvider<PositionRetentionController>(
-            create: (_) => PositionRetentionController(),
+            create: (_) => PositionRetentionController(clock: clock),
           ),
           // Squares off intraday positions at 15:20, the way a broker does just
           // before the close, so a day never ends holding a MIS position.
@@ -61,6 +67,7 @@ class CyberPulseApp extends StatelessWidget {
               repository: context.read<PositionsRepository>(),
               ltpOf: (symbol) =>
                   context.read<LiveMarketController>().quoteFor(symbol)?.ltp ?? 0,
+              clock: clock,
             ),
           ),
         ],

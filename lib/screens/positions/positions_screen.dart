@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_fonts.dart';
@@ -12,6 +11,7 @@ import '../../services/live/live_market_controller.dart';
 import '../../services/positions/mis_auto_square_off_controller.dart';
 import '../../services/positions/position_retention_controller.dart';
 import '../../widgets/scale_fit.dart';
+import '../../core/icons/lucide_icons.dart';
 import 'widgets/position_card.dart';
 import 'widgets/order_pad_sheet.dart';
 import 'widgets/position_filter_sheet.dart';

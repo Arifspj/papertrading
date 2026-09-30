@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+
+import '../../../core/icons/lucide_icons.dart';
 
 import '../../../core/market/lot_sizes.dart';
 import '../../../core/theme/cyber_colors.dart';

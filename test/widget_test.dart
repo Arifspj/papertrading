@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+
 import 'package:paper_trade/main.dart';
+import 'package:paper_trade/core/icons/lucide_icons.dart';
+
+/// 10:00 on a trading day: before both the 15:20 square-off and the 07:00
+/// retention boundary, so the seeded book is left alone.
+DateTime testClock() => DateTime(2026, 9, 30, 10);
 
 void main() {
   testWidgets('App boots and shows the Positions screen', (tester) async {
-    await tester.pumpWidget(const CyberPulseApp());
+    await tester.pumpWidget(CyberPulseApp(clock: testClock));
     await tester.pumpAndSettle();
 
     expect(find.text('Portfolio'), findsNothing);
@@ -16,7 +21,7 @@ void main() {
   });
 
   testWidgets('Position search filters the list', (tester) async {
-    await tester.pumpWidget(const CyberPulseApp());
+    await tester.pumpWidget(CyberPulseApp(clock: testClock));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byIcon(LucideIcons.search).first);
@@ -28,7 +33,7 @@ void main() {
   });
 
   testWidgets('Position filter narrows the list', (tester) async {
-    await tester.pumpWidget(const CyberPulseApp());
+    await tester.pumpWidget(CyberPulseApp(clock: testClock));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byIcon(LucideIcons.slidersHorizontal).first);
@@ -41,7 +46,7 @@ void main() {
   });
 
   testWidgets('Theme toggle exists in settings', (tester) async {
-    await tester.pumpWidget(const CyberPulseApp());
+    await tester.pumpWidget(CyberPulseApp(clock: testClock));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Settings'));
